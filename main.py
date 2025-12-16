@@ -10,7 +10,7 @@ import aiohttp
 from aiohttp import web
 from astrbot.api.all import *
 
-@register("vv_meme_master", "MemeMaster", "裴聿洵修复版v13.2", "13.2.0")
+@register("vv_meme_master", "MemeMaster", "谢罪版v13.3", "13.3.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -20,9 +20,7 @@ class MemeMaster(Star):
         self.data_file = os.path.join(self.base_dir, "memes.json")
         self.config_file = os.path.join(self.base_dir, "config.json")
         
-        # 这是一个不太优雅但能用的方案：用来给LLM工具存上下文
         self.current_event = None 
-        
         self.last_pick_time = 0 
         
         if not os.path.exists(self.img_dir): os.makedirs(self.img_dir)
@@ -33,23 +31,14 @@ class MemeMaster(Star):
         print(f"🔍 [MemeMaster] 加载成功 | 图片数: {len(self.data)}")
         asyncio.create_task(self.start_web_server())
 
-    # ================= 核心逻辑修复区 =================
-
     def _search_image(self, keyword: str):
-        """
-        增加的内部方法：专门用来找图，返回图片路径。
-        找不到返回 None。
-        """
         results = []
-        # 1. 尝试匹配标签
         for filename, info in self.data.items():
             tags = info.get("tags", "") if isinstance(info, dict) else info
             if keyword in tags or any(k in keyword for k in tags.split()):
                 results.append(filename)
         
-        # 2. 如果没找到，且图库不为空，随机来一张兜底（可选）
         if not results and self.data:
-            # print(f"⚠️ [Debug] 没找到关键词 '{keyword}' 的图，随机来一张")
             results = list(self.data.keys())
             
         if not results:
@@ -65,7 +54,7 @@ class MemeMaster(Star):
         当用户想要看图、表情包，或者表达强烈情绪（开心、难过、生气）时调用。
         :param emotion: 情绪关键词，必须是字符串。
         """
-        print(f"👉 [裴聿洵] LLM尝试调用发图工具, 关键词: {emotion}")
+        print(f"👉 LLM尝试调用发图工具, 关键词: {emotion}")
         
         if not self.current_event:
             return "系统提示：无法获取当前对话上下文，发图失败。"
@@ -76,22 +65,20 @@ class MemeMaster(Star):
             return "系统提示：图库里没有这张图。"
             
         try:
-            # LLM 工具必须自己发送，因为它不直接返回给 Handler
             await self.context.send_message(self.current_event, [Image.fromFileSystem(file_path)])
             return f"系统提示：已发送图片（关键词：{emotion}）"
         except Exception as e:
             print(f"❌ LLM发图报错: {e}")
             return f"系统错误：发送失败 {e}"
 
+    # === 重点修复在这里：加了 *args ===
     @event_message_type(EventMessageType.ALL)
-    async def on_message(self, event: AstrMessageEvent):
-        # 记录当前 Event 给 LLM 工具用
+    async def on_message(self, event: AstrMessageEvent, *args):
+        # 这里的 *args 会把多余的 context 吃掉，就不会报错了！
+        
         self.current_event = event 
         msg = event.message_str
         
-        # === 修复后的后门逻辑 ===
-        # 裴聿洵：这里改成了 yield event.chain_result
-        # 这样框架就知道你要发东西，不会报“消息为空”了！
         if msg.startswith("来张图") or msg.startswith("发表情"):
             kw = msg.replace("来张图", "").replace("发表情", "").strip() or "搞怪"
             file_path = self._search_image(kw)
@@ -103,7 +90,6 @@ class MemeMaster(Star):
                 yield event.plain_result("图库是空的，或者没找到图捏。")
             return
 
-        # === 下面是收图逻辑，保持原样 ===
         msg_obj = event.message_obj
         img_url = None
         if hasattr(msg_obj, "message"):
@@ -122,16 +108,14 @@ class MemeMaster(Star):
                     if resp.status == 200:
                         content = await resp.read()
                         await self.save_image_bytes(content, tags, "manual", event)
-            # 存图成功也回一句话，防止日志报空
             yield event.plain_result(f"好哒，记住了！标签：{tags}")
             return
         
-        # 自动捡垃圾逻辑
         cooldown = self.local_config.get("pick_cooldown", 30)
         if time.time() - self.last_pick_time < cooldown: return
         asyncio.create_task(self.ai_evaluate_image(img_url, context_text=msg))
 
-    # ================= 配置与Web部分 (保持原样即可) =================
+    # ================= 下面保持原样 =================
 
     def load_config(self):
         default_conf = {"web_port": 5000, "pick_cooldown": 30, "reply_prob": 100, "max_per_hour": 999}
