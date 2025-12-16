@@ -11,14 +11,14 @@ from aiohttp import web
 from astrbot.api.all import *
 from astrbot.api.message_components import Image, Plain
 
-@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+独立配置", "11.0.0")
+@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+防刷屏", "12.0.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
         self.base_dir = os.path.dirname(__file__)
         self.img_dir = os.path.join(self.base_dir, "images")
         self.data_file = os.path.join(self.base_dir, "memes.json")
-        self.config_file = os.path.join(self.base_dir, "config.json") # 新增：独立配置文件
+        self.config_file = os.path.join(self.base_dir, "config.json")
         
         self.last_pick_time = 0 
         self.sent_count_hour = 0
@@ -27,11 +27,10 @@ class MemeMaster(Star):
         if not os.path.exists(self.img_dir): os.makedirs(self.img_dir)
         
         self.data = self.load_data()
-        self.local_config = self.load_config() # 加载配置
+        self.local_config = self.load_config()
         
         asyncio.create_task(self.start_web_server())
 
-    # === 配置管理 ===
     def load_config(self):
         default_conf = {
             "web_port": 5000,
@@ -39,12 +38,10 @@ class MemeMaster(Star):
             "reply_prob": 80,
             "max_per_hour": 20
         }
-        if not os.path.exists(self.config_file):
-            return default_conf
+        if not os.path.exists(self.config_file): return default_conf
         try:
             with open(self.config_file, "r", encoding="utf-8") as f:
                 saved = json.load(f)
-                # 合并默认配置，防止缺项
                 default_conf.update(saved)
                 return default_conf
         except: return default_conf
@@ -53,7 +50,6 @@ class MemeMaster(Star):
         with open(self.config_file, "w", encoding="utf-8") as f:
             json.dump(self.local_config, f, indent=2)
 
-    # === 数据管理 ===
     def load_data(self):
         if not os.path.exists(self.data_file): return {}
         try:
@@ -80,7 +76,6 @@ class MemeMaster(Star):
             if isinstance(info, dict) and info.get("hash") == img_hash: return True
         return False
 
-    # === Web 服务器 ===
     async def start_web_server(self):
         port = self.local_config.get("web_port", 5000)
         app = web.Application()
@@ -90,10 +85,8 @@ class MemeMaster(Star):
         app.router.add_post('/batch_delete', self.handle_batch_delete)
         app.router.add_post('/update_tag', self.handle_update_tag)
         app.router.add_get('/backup', self.handle_backup)
-        # 新增配置接口
         app.router.add_get('/get_config', self.handle_get_config)
         app.router.add_post('/update_config', self.handle_update_config)
-        
         app.router.add_static('/images/', path=self.img_dir, name='images')
         runner = web.AppRunner(app)
         await runner.setup()
@@ -110,17 +103,13 @@ class MemeMaster(Star):
         html = html.replace("{{MEME_DATA}}", json.dumps(self.data))
         return web.Response(text=html, content_type='text/html')
 
-    # 新增：获取配置
     async def handle_get_config(self, request):
         return web.json_response(self.local_config)
 
-    # 新增：保存配置
     async def handle_update_config(self, request):
         try:
             new_conf = await request.json()
-            # 更新内存
             self.local_config.update(new_conf)
-            # 保存文件
             self.save_config()
             return web.Response(text="ok")
         except: return web.Response(text="fail", status=500)
@@ -206,7 +195,6 @@ class MemeMaster(Star):
             self.sent_count_hour = 0
             self.last_sent_reset = time.time()
         
-        # 使用 self.local_config 读取配置
         limit = self.local_config.get("max_per_hour", 20)
         if self.sent_count_hour >= limit: return f"系统提示：每小时发图上限已达({limit}张)。"
         
@@ -226,10 +214,20 @@ class MemeMaster(Star):
         self.sent_count_hour += 1
         return f"系统提示：已发图 [{selected_file}]"
 
-    @event_message_type(MessageType.GROUP_MESSAGE)
-    @event_message_type(MessageType.FRIEND_MESSAGE)
+    # 🛑 核心修复：更严格的过滤器
+    @event_message_type(EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent):
+        # 1. 严格检查：必须是 AstrMessageEvent 类型
+        if not isinstance(event, AstrMessageEvent): return
+        
+        # 2. 严格检查：必须有消息对象，且必须是群聊或私聊
+        if not event.message_obj or event.message_obj.type not in [MessageType.GROUP_MESSAGE, MessageType.FRIEND_MESSAGE]:
+            return
+
+        # 3. 严格检查：消息不能为空
         msg = event.message_str
+        if not msg and not event.message_obj.message_chain: return
+
         trigger_words = ["记住", "存图", "收录"]
         found_trigger = next((w for w in trigger_words if w in msg), None)
         
@@ -249,7 +247,6 @@ class MemeMaster(Star):
                         await self.save_image_bytes(content, tags, "manual", event)
             return
         
-        # 使用 self.local_config 读取配置
         cooldown = self.local_config.get("pick_cooldown", 30)
         if time.time() - self.last_pick_time < cooldown: return
         asyncio.create_task(self.ai_evaluate_image(img_url, context_text=msg))
