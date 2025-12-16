@@ -173,8 +173,8 @@ class MemeMaster(Star):
 
     # ================= 捡垃圾 =================
     @event_message_type(MessageType.GROUP_MESSAGE)
-@event_message_type(MessageType.FRIEND_MESSAGE)
-async def on_message(self, event: AstrMessageEvent):
+    @event_message_type(MessageType.FRIEND_MESSAGE)
+    async def on_message(self, event: AstrMessageEvent):
         msg = event.message_str
         trigger_words = ["记住", "存图", "收录"]
         found_trigger = next((w for w in trigger_words if w in msg), None)
