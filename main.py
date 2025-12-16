@@ -14,7 +14,7 @@ from astrbot.api.event.filter import EventMessageType
 from astrbot.core.platform import AstrMessageEvent
 from astrbot.core.message.components import Image, Plain, MessageChain
 
-@register("vv_meme_master", "MemeMaster", "GalleryStyle", "15.1.0")
+@register("vv_meme_master", "MemeMaster", "表情包标签匹配+存图", "15.1.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -23,17 +23,14 @@ class MemeMaster(Star):
         self.data_file = os.path.join(self.base_dir, "memes.json")
         self.config_file = os.path.join(self.base_dir, "config.json")
         
-        # 自动存图冷却时间标记
         self.last_auto_save_time = 0
         
-        # 确保目录存在
         if not os.path.exists(self.img_dir):
             os.makedirs(self.img_dir, exist_ok=True)
             
         self.local_config = self.load_config()
         self.data = self.load_data()
 
-        # 启动网页后台 (为了您的 index.html 能用)
         try:
             asyncio.create_task(self.start_web_server())
         except Exception as e:
@@ -51,24 +48,22 @@ class MemeMaster(Star):
             cooldown = self.local_config.get("auto_save_cooldown", 60)
             if time.time() - self.last_auto_save_time > cooldown:
                 asyncio.create_task(self.ai_evaluate_image(img_url))
-            return # 是图片就不给 AI 看小抄了
+            return
 
         # --- 分支 B：用户发文字 (准备发图) ---
         if not img_url:
-            # 概率控制 (默认 100%)
             prob = self.local_config.get("reply_prob", 100)
             if random.randint(1, 100) > prob:
                 return 
 
-            # 获取描述列表
             descriptions = self.get_all_descriptions()
-            if not descriptions: return
+            if not descriptions:
+                return
             
-            # 【Token 省钱大法】随机抽 50 个给 AI 看，不给全看
+            # 随机抽 50 个给 AI 看
             display_list = descriptions if len(descriptions) <= 50 else random.sample(descriptions, 50)
             menu_text = "、".join(display_list)
             
-            # 注入小抄
             system_injection = f"\n\n[System Hint]\nAvailable Memes: [{menu_text}]\nUse 'MEME_TAG: content' to send."
             event.message_str += system_injection
 
@@ -78,7 +73,8 @@ class MemeMaster(Star):
     @filter.on_decorating_result()
     async def on_decorate(self, event: AstrMessageEvent):
         result = event.get_result()
-        if not result: return
+        if not result:
+            return
         text = result.message_str
         
         if "MEME_TAG:" in text:
@@ -95,7 +91,8 @@ class MemeMaster(Star):
                     event.set_result(MessageChain(chain))
                 else:
                     event.set_result(MessageChain([Plain(chat_content)]))
-            except: pass
+            except:
+                pass
 
     # ==============================================================
     # 逻辑部分 3：AI 自动鉴赏 (自动存图)
@@ -104,9 +101,9 @@ class MemeMaster(Star):
         try:
             self.last_auto_save_time = time.time()
             provider = self.context.get_using_provider()
-            if not provider: return
+            if not provider:
+                return
 
-            # 内置的鉴赏 Prompt，不需要您动手
             prompt = """
 请判断这张图片是否适合作为"表情包"收藏。
 标准：有趣、有梗、二次元或动物表情。普通照片不要。
@@ -128,7 +125,7 @@ YES
             print(f"鉴赏失败: {e}")
 
     # ==============================================================
-    # Web 后台部分 (为了让 index.html 能工作)
+    # Web 后台部分
     # ==============================================================
     async def start_web_server(self):
         port = self.local_config.get("web_port", 5000)
@@ -150,34 +147,40 @@ YES
 
     async def handle_index(self, r):
         p = os.path.join(self.base_dir, "index.html")
-        if not os.path.exists(p): return web.Response(text="index missing", status=404)
+        if not os.path.exists(p):
+            return web.Response(text="index missing", status=404)
         with open(p, "r", encoding="utf-8") as f:
             return web.Response(text=f.read().replace("{{MEME_DATA}}", json.dumps(self.data)), content_type="text/html")
 
-    # 简化的上传/删除处理，与之前保持一致
     async def handle_upload(self, r):
         try:
             reader = await r.multipart()
             while True:
                 part = await reader.next()
-                if part is None: break
+                if part is None:
+                    break
                 if part.name == "file":
                     fn = part.filename
                     fd = await part.read()
                     if fd:
-                        if os.path.exists(os.path.join(self.img_dir, fn)): fn = f"{int(time.time())}_{fn}"
-                        with open(os.path.join(self.img_dir, fn), "wb") as f: f.write(fd)
+                        if os.path.exists(os.path.join(self.img_dir, fn)):
+                            fn = f"{int(time.time())}_{fn}"
+                        with open(os.path.join(self.img_dir, fn), "wb") as f:
+                            f.write(fd)
                         self.data[fn] = {"tags": "网页上传", "source": "manual"}
                         self.save_data()
             return web.Response(text="ok")
-        except: return web.Response(text="error")
+        except:
+            return web.Response(text="error")
 
     async def handle_delete(self, r):
         d = await r.json()
         fn = d.get("filename")
         if fn in self.data:
-            try: os.remove(os.path.join(self.img_dir, fn))
-            except: pass
+            try:
+                os.remove(os.path.join(self.img_dir, fn))
+            except:
+                pass
             del self.data[fn]
             self.save_data()
         return web.Response(text="ok")
@@ -186,8 +189,10 @@ YES
         d = await r.json()
         for fn in d.get("filenames", []):
             if fn in self.data:
-                try: os.remove(os.path.join(self.img_dir, fn))
-                except: pass
+                try:
+                    os.remove(os.path.join(self.img_dir, fn))
+                except:
+                    pass
                 del self.data[fn]
         self.save_data()
         return web.Response(text="ok")
@@ -199,17 +204,22 @@ YES
             self.save_data()
         return web.Response(text="ok")
 
-    async def handle_get_config(self, r): return web.json_response(self.local_config)
+    async def handle_get_config(self, r):
+        return web.json_response(self.local_config)
+
     async def handle_update_config(self, r): 
         self.local_config.update(await r.json())
         try:
-            with open(self.config_file, "w") as f: json.dump(self.local_config, f, indent=2)
-        except: pass
+            with open(self.config_file, "w") as f:
+                json.dump(self.local_config, f, indent=2)
+        except:
+            pass
         return web.Response(text="ok")
 
     # ================== 工具函数 ==================
     def get_all_descriptions(self):
-        if not self.data: return []
+        if not self.data:
+            return []
         return [info.get("tags", "") for info in self.data.values()]
 
     def find_best_match(self, query):
@@ -218,7 +228,8 @@ YES
         for filename, info in self.data.items():
             tags = info.get("tags", "")
             ratio = difflib.SequenceMatcher(None, query, tags).ratio()
-            if query in tags: ratio += 0.5
+            if query in tags:
+                ratio += 0.5
             if ratio > best_ratio:
                 best_ratio = ratio
                 best_file = filename
@@ -230,8 +241,10 @@ YES
     async def save_cmd(self, event: AstrMessageEvent):
         tags = event.message_str.replace("存图", "").strip()
         img_url = self._get_img_url(event)
-        if not img_url: return await event.send("请回复图片")
-        if not tags: return await event.send("❌ 请输入描述")
+        if not img_url:
+            return await event.send("请回复图片")
+        if not tags:
+            return await event.send("❌ 请输入描述")
         await self._save_image_file(img_url, tags, "manual")
         await event.send(f"✅ 手动入库: {tags}")
 
@@ -241,39 +254,51 @@ YES
                 async with session.get(url) as resp:
                     if resp.status == 200:
                         fn = f"{int(time.time())}.jpg"
+                        content = await resp.read()
                         with open(os.path.join(self.img_dir, fn), "wb") as f:
-                            f.write(content := await resp.read())
+                            f.write(content)
                         self.data[fn] = {"tags": tags, "source": source}
                         self.save_data()
-        except: pass
+        except:
+            pass
 
     def _get_img_url(self, event):
         try:
             msg_obj = event.message_obj
             if hasattr(msg_obj, "message"):
                 for comp in msg_obj.message:
-                    if isinstance(comp, Image): return comp.url
+                    if isinstance(comp, Image):
+                        return comp.url
             if hasattr(msg_obj, "message_chain"):
                 for comp in msg_obj.message_chain:
-                    if isinstance(comp, Image): return comp.url
-        except: return None
+                    if isinstance(comp, Image):
+                        return comp.url
+        except:
+            return None
         return None
 
     def load_config(self):
         default = {"web_port": 5000, "reply_prob": 100, "auto_save_cooldown": 60}
         try:
             if os.path.exists(self.config_file):
-                with open(self.config_file, "r") as f: default.update(json.load(f))
-        except: pass
+                with open(self.config_file, "r") as f:
+                    default.update(json.load(f))
+        except:
+            pass
         return default
 
     def load_data(self):
         try:
             if os.path.exists(self.data_file):
-                with open(self.data_file, "r") as f: return json.load(f)
-        except: pass
+                with open(self.data_file, "r") as f:
+                    return json.load(f)
+        except:
+            pass
         return {}
 
     def save_data(self):
-        try: with open(self.data_file, "w") as f: json.dump(self.data, f, ensure_ascii=False)
-        except: pass
+        try:
+            with open(self.data_file, "w") as f:
+                json.dump(self.data, f, ensure_ascii=False)
+        except:
+            pass
