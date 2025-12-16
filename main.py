@@ -11,31 +11,49 @@ from aiohttp import web
 from astrbot.api.all import *
 from astrbot.api.message_components import Image, Plain
 
-@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+备份", "10.1.0")
+@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+独立配置", "11.0.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
-        self.config = config if config is not None else {}
         self.base_dir = os.path.dirname(__file__)
         self.img_dir = os.path.join(self.base_dir, "images")
         self.data_file = os.path.join(self.base_dir, "memes.json")
+        self.config_file = os.path.join(self.base_dir, "config.json") # 新增：独立配置文件
+        
         self.last_pick_time = 0 
         self.sent_count_hour = 0
         self.last_sent_reset = time.time()
         
         if not os.path.exists(self.img_dir): os.makedirs(self.img_dir)
-        self.data = self.load_data() # 这里会自动清洗坏数据
+        
+        self.data = self.load_data()
+        self.local_config = self.load_config() # 加载配置
+        
         asyncio.create_task(self.start_web_server())
 
-    def config_schema(self):
-        return [
-            {"name": "web_port", "type": "int", "default": 5000, "description": "Web后台端口"},
-            {"name": "pick_cooldown", "type": "int", "default": 30, "description": "捡垃圾冷却(秒)"},
-            {"name": "reply_prob", "type": "int", "default": 80, "description": "发图概率(0-100)"},
-            {"name": "max_per_hour", "type": "int", "default": 20, "description": "每小时发图上限"}
-        ]
+    # === 配置管理 ===
+    def load_config(self):
+        default_conf = {
+            "web_port": 5000,
+            "pick_cooldown": 30,
+            "reply_prob": 80,
+            "max_per_hour": 20
+        }
+        if not os.path.exists(self.config_file):
+            return default_conf
+        try:
+            with open(self.config_file, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                # 合并默认配置，防止缺项
+                default_conf.update(saved)
+                return default_conf
+        except: return default_conf
 
-    # 🧼 数据清洗与加载
+    def save_config(self):
+        with open(self.config_file, "w", encoding="utf-8") as f:
+            json.dump(self.local_config, f, indent=2)
+
+    # === 数据管理 ===
     def load_data(self):
         if not os.path.exists(self.data_file): return {}
         try:
@@ -43,15 +61,9 @@ class MemeMaster(Star):
                 raw_data = json.load(f)
                 clean_data = {}
                 for k, v in raw_data.items():
-                    # 1. 过滤掉看起来像乱码或没有后缀名的幽灵文件
-                    if not k.endswith(('.jpg', '.png', '.gif', '.jpeg', '.webp')):
-                        continue
-                    
-                    # 2. 格式升级兼容
-                    if isinstance(v, str):
-                        clean_data[k] = {"tags": v, "source": "manual", "hash": ""}
-                    else:
-                        clean_data[k] = v
+                    if not k.lower().endswith(('.jpg', '.png', '.gif', '.jpeg', '.webp')): continue
+                    if isinstance(v, str): clean_data[k] = {"tags": v, "source": "manual", "hash": ""}
+                    else: clean_data[k] = v
                 return clean_data
         except: return {}
 
@@ -68,8 +80,9 @@ class MemeMaster(Star):
             if isinstance(info, dict) and info.get("hash") == img_hash: return True
         return False
 
+    # === Web 服务器 ===
     async def start_web_server(self):
-        port = self.config.get("web_port", 5000)
+        port = self.local_config.get("web_port", 5000)
         app = web.Application()
         app.router.add_get('/', self.handle_index)
         app.router.add_post('/upload', self.handle_upload)
@@ -77,6 +90,10 @@ class MemeMaster(Star):
         app.router.add_post('/batch_delete', self.handle_batch_delete)
         app.router.add_post('/update_tag', self.handle_update_tag)
         app.router.add_get('/backup', self.handle_backup)
+        # 新增配置接口
+        app.router.add_get('/get_config', self.handle_get_config)
+        app.router.add_post('/update_config', self.handle_update_config)
+        
         app.router.add_static('/images/', path=self.img_dir, name='images')
         runner = web.AppRunner(app)
         await runner.setup()
@@ -93,10 +110,26 @@ class MemeMaster(Star):
         html = html.replace("{{MEME_DATA}}", json.dumps(self.data))
         return web.Response(text=html, content_type='text/html')
 
+    # 新增：获取配置
+    async def handle_get_config(self, request):
+        return web.json_response(self.local_config)
+
+    # 新增：保存配置
+    async def handle_update_config(self, request):
+        try:
+            new_conf = await request.json()
+            # 更新内存
+            self.local_config.update(new_conf)
+            # 保存文件
+            self.save_config()
+            return web.Response(text="ok")
+        except: return web.Response(text="fail", status=500)
+
     async def handle_backup(self, request):
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             if os.path.exists(self.data_file): zip_file.write(self.data_file, "memes.json")
+            if os.path.exists(self.config_file): zip_file.write(self.config_file, "config.json")
             for root, dirs, files in os.walk(self.img_dir):
                 for file in files: zip_file.write(os.path.join(root, file), os.path.join("images", file))
         buffer.seek(0)
@@ -108,7 +141,6 @@ class MemeMaster(Star):
             filename = data.get("filename")
             new_tags = data.get("tags")
             if filename in self.data:
-                # 再次确保格式正确
                 if isinstance(self.data[filename], str):
                     self.data[filename] = {"tags": self.data[filename], "source": "manual", "hash": ""}
                 self.data[filename]["tags"] = new_tags
@@ -130,42 +162,31 @@ class MemeMaster(Star):
             return web.Response(text="ok")
         except: return web.Response(text="fail", status=500)
 
-    # 🔧 修复版上传逻辑：更聪明地解析数据
     async def handle_upload(self, request):
         reader = await request.multipart()
         file_data = None
         filename = None
         tags = "未分类"
-        
-        # 循环读取所有字段，不依赖顺序
         while True:
             field = await reader.next()
             if field is None: break
-            
             if field.name == 'file':
                 filename = field.filename
-                # 防止空文件上传
                 if not filename: continue 
                 file_data = await field.read()
             elif field.name == 'tags':
                 tags = (await field.text()).strip() or "未分类"
 
         if file_data and filename:
-            # 必须有后缀名才保存，防止保存幽灵文件
             if not filename.lower().endswith(('.jpg', '.png', '.gif', '.jpeg', '.webp')):
                 return web.Response(text="invalid file type", status=400)
-
             img_hash = self.calculate_md5(file_data)
             if os.path.exists(os.path.join(self.img_dir, filename)):
                 filename = f"{int(time.time())}_{filename}"
-            
-            with open(os.path.join(self.img_dir, filename), 'wb') as f:
-                f.write(file_data)
-            
+            with open(os.path.join(self.img_dir, filename), 'wb') as f: f.write(file_data)
             self.data[filename] = {"tags": tags, "source": "manual", "hash": img_hash}
             self.save_data()
             return web.Response(text="ok")
-        
         return web.Response(text="no file", status=400)
 
     async def handle_delete(self, request):
@@ -184,9 +205,12 @@ class MemeMaster(Star):
         if time.time() - self.last_sent_reset > 3600:
             self.sent_count_hour = 0
             self.last_sent_reset = time.time()
-        limit = self.config.get("max_per_hour", 20)
+        
+        # 使用 self.local_config 读取配置
+        limit = self.local_config.get("max_per_hour", 20)
         if self.sent_count_hour >= limit: return f"系统提示：每小时发图上限已达({limit}张)。"
-        prob = self.config.get("reply_prob", 80)
+        
+        prob = self.local_config.get("reply_prob", 80)
         if random.randint(1, 100) > prob: return "系统提示：判定不用发图。"
 
         results = []
@@ -224,7 +248,9 @@ class MemeMaster(Star):
                         content = await resp.read()
                         await self.save_image_bytes(content, tags, "manual", event)
             return
-        cooldown = self.config.get("pick_cooldown", 30)
+        
+        # 使用 self.local_config 读取配置
+        cooldown = self.local_config.get("pick_cooldown", 30)
         if time.time() - self.last_pick_time < cooldown: return
         asyncio.create_task(self.ai_evaluate_image(img_url, context_text=msg))
 
@@ -238,7 +264,18 @@ class MemeMaster(Star):
             img_hash = self.calculate_md5(content)
             if self.is_duplicate(img_hash): return 
             self.last_pick_time = time.time()
-            prompt = f"""请审视这张图。配文:"{context_text}"。1.无意义->NO 2.有趣->YES|标签(10字内)"""
+            prompt = f"""请审视这张图。用户配文:"{context_text}"。
+            任务：
+            1. 判断图片是否值得收藏（有趣/搞怪/符合人设）。
+            2. 如果值得收藏，请生成标签。
+            标签要求：
+            - 如果认出角色（如：线条小狗、Loopy、多栋、猫猫虫等），请务必把角色名带上。
+            - 格式：角色名: 情绪/动作
+            - 例如：线条小狗: 开心
+            回答格式：
+            - 不收藏 -> NO
+            - 收藏 -> YES|标签内容"""
+            
             handler = self.context.get_llm_handler()
             if not handler: return
             resp = await handler.provider.text_chat(prompt, session_id=None, image_urls=[img_url])
