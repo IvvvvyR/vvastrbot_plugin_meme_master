@@ -3,49 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>机的 表情包收录</title>
+    <title>机的表情包收录</title>
     <style>
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; padding: 20px; max-width: 1200px; margin: 0 auto; color: #333; }
-        h1 { text-align: center; margin-bottom: 20px; }
+        :root { --primary: #6366f1; --bg: #f8fafc; --text: #334155; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); padding: 15px; max-width: 1000px; margin: 0 auto; color: var(--text); }
+        h1 { text-align: center; font-size: 1.5rem; margin-bottom: 1rem; color: #1e293b; }
         
         .header-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .backup-btn { background: #805ad5; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; border: none; cursor: pointer; display: inline-flex; align-items: center; }
-        .backup-btn:hover { background: #6b46c1; }
+        .btn { padding: 8px 16px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.9rem; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+        .btn-backup { background: #8b5cf6; color: white; }
+        .btn-upload { background: #10b981; color: white; width: 100%; margin-top: 10px; padding: 12px; font-size: 1rem; }
         
-        .controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
-        .filter-btn { padding: 8px 20px; border: none; border-radius: 20px; cursor: pointer; background: #e2e8f0; color: #4a5568; }
-        .filter-btn.active { background: #4299e1; color: white; }
+        .controls { display: flex; gap: 8px; justify-content: center; overflow-x: auto; padding-bottom: 5px; }
+        .filter-btn { background: white; border: 1px solid #cbd5e1; color: #64748b; }
+        .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
 
-        .upload-section { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; display: none; text-align: center; }
-        .upload-section.show { display: block; }
+        .upload-section { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; display: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .upload-section.show { display: block; animation: slideDown 0.3s ease; }
+        @keyframes slideDown { from {opacity:0; transform:translateY(-10px);} to {opacity:1; transform:translateY(0);} }
+
+        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+        .card { background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); position: relative; }
+        .card img { width: 100%; height: 140px; object-fit: cover; background: #f1f5f9; }
+        .card-body { padding: 8px; }
         
-        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 15px; }
-        .card { background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); position: relative; }
-        .card img { width: 100%; height: 150px; object-fit: cover; }
-        .card-body { padding: 10px; font-size: 12px; }
-        .badge { position: absolute; top: 5px; left: 5px; padding: 2px 6px; border-radius: 4px; font-size: 10px; color: white; }
-        .badge-manual { background: #4299e1; }
-        .badge-auto { background: #ed8936; }
-        .delete-btn { position: absolute; top: 5px; right: 5px; background: rgba(0,0,0,0.5); color: white; border: none; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; }
+        .tag-display { font-size: 12px; color: #475569; display: flex; justify-content: space-between; align-items: center; }
+        .edit-icon { cursor: pointer; color: #94a3b8; padding: 2px 5px; }
+        .edit-icon:hover { color: var(--primary); }
+        
+        .tag-edit-area { display: none; margin-top: 5px; }
+        .tag-edit-area input { width: 100%; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; box-sizing: border-box; }
+        .tag-edit-area button { margin-top: 4px; width: 100%; font-size: 10px; background: var(--primary); color: white; border: none; border-radius: 4px; padding: 4px; cursor: pointer; }
+
+        .badge { position: absolute; top: 6px; left: 6px; padding: 2px 6px; border-radius: 4px; font-size: 10px; color: white; font-weight: bold; z-index: 2; }
+        .badge-manual { background: rgba(59, 130, 246, 0.9); }
+        .badge-auto { background: rgba(249, 115, 22, 0.9); }
+        .delete-btn { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.4); color: white; border: none; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; z-index: 2; }
+        
+        /* 批量上传进度条 */
+        .progress-bar { height: 4px; background: #e2e8f0; margin-top: 10px; border-radius: 2px; overflow: hidden; display: none; }
+        .progress-fill { height: 100%; background: #10b981; width: 0%; transition: width 0.3s; }
     </style>
 </head>
 <body>
     <div class="header-actions">
-        <h1>🤍 机的 表情包收录</h1>
-        <a href="/backup" class="backup-btn" target="_blank">📥 一键备份数据 (Zip)</a>
+        <h1>🤍 机的表情包收录</h1>
+        <a href="/backup" class="btn btn-backup" target="_blank">📥 备份</a>
     </div>
     
     <div class="controls">
-        <button class="filter-btn active" onclick="setFilter('all')">全部</button>
-        <button class="filter-btn" onclick="setFilter('manual')">我上传的</button>
-        <button class="filter-btn" onclick="setFilter('auto')">机捡来的</button>
-        <button class="filter-btn" onclick="toggleUpload()" style="background:#48bb78; color:white">➕ 上传</button>
+        <button class="btn filter-btn active" onclick="setFilter('all')">全部</button>
+        <button class="btn filter-btn" onclick="setFilter('manual')">我传的</button>
+        <button class="btn filter-btn" onclick="setFilter('auto')">机捡的小垃圾们</button>
+        <button class="btn filter-btn" style="background:#10b981; color:white; border-color:#10b981" onclick="toggleUpload()">➕ 批量上传</button>
     </div>
 
     <div class="upload-section" id="uploadBox">
-        <input type="file" id="fileInput" accept="image/*">
-        <input type="text" id="tagInput" placeholder="输入标签..." style="padding: 5px;">
-        <button onclick="uploadFile()">确定上传</button>
+        <p style="margin:0 0 10px 0; color:#64748b; font-size:0.9rem">💡 手机可长按图片进行多选</p>
+        <!-- multiple 属性允许批量选择 -->
+        <input type="file" id="fileInput" accept="image/*" multiple style="width:100%; padding:10px; border:2px dashed #cbd5e1; border-radius:8px;">
+        <input type="text" id="globalTagInput" placeholder="统一标签 (选填，如: 搞怪)" style="width:100%; padding:10px; margin-top:10px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box">
+        
+        <button class="btn btn-upload" onclick="batchUpload()">🚀 开始上传</button>
+        <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+        <p id="uploadStatus" style="text-align:center; font-size:12px; color:#64748b; margin-top:5px;"></p>
     </div>
 
     <div class="gallery" id="gallery"></div>
@@ -60,7 +81,7 @@
             const items = Object.entries(rawData).reverse();
 
             for (const [filename, info] of items) {
-                const tags = info.tags || info; 
+                const tags = info.tags || "未分类"; 
                 const source = info.source || 'manual';
                 if (currentFilter !== 'all' && source !== currentFilter) continue;
 
@@ -70,11 +91,76 @@
                     <div class="badge ${source==='auto'?'badge-auto':'badge-manual'}">${source==='auto'?'AI':'我'}</div>
                     <button class="delete-btn" onclick="deleteMeme('${filename}')">×</button>
                     <a href="/images/${filename}" target="_blank"><img src="/images/${filename}" loading="lazy"></a>
-                    <div class="card-body">🏷️ ${tags}</div>
+                    <div class="card-body">
+                        <div class="tag-display" id="disp-${filename}">
+                            <span>🏷️ ${tags}</span>
+                            <span class="edit-icon" onclick="showEdit('${filename}', '${tags}')">✏️</span>
+                        </div>
+                        <div class="tag-edit-area" id="edit-${filename}">
+                            <input type="text" value="${tags}" id="input-${filename}">
+                            <button onclick="saveTag('${filename}')">保存</button>
+                        </div>
+                    </div>
                 `;
                 container.appendChild(div);
             }
         }
+
+        // === 批量上传逻辑 ===
+        async function batchUpload() {
+            const fileInput = document.getElementById('fileInput');
+            const files = fileInput.files;
+            const globalTag = document.getElementById('globalTagInput').value.trim() || "未分类";
+            const status = document.getElementById('uploadStatus');
+            const bar = document.getElementById('progressBar');
+            const fill = document.getElementById('progressFill');
+
+            if(files.length === 0) return alert("请至少选一张图！");
+
+            bar.style.display = 'block';
+            let successCount = 0;
+
+            for(let i=0; i<files.length; i++) {
+                const fd = new FormData();
+                fd.append('file', files[i]);
+                fd.append('tags', globalTag); // 所有图用同一个初始标签
+
+                try {
+                    status.innerText = `正在上传 ${i+1}/${files.length}...`;
+                    await fetch('/upload', {method: 'POST', body: fd});
+                    successCount++;
+                } catch(e) {
+                    console.error(e);
+                }
+                fill.style.width = `${((i+1)/files.length)*100}%`;
+            }
+
+            status.innerText = `✅ 完成！成功上传 ${successCount} 张。`;
+            setTimeout(() => location.reload(), 1000);
+        }
+
+        // === 修改标签逻辑 ===
+        function showEdit(filename, oldTags) {
+            document.getElementById(`disp-${filename}`).style.display = 'none';
+            document.getElementById(`edit-${filename}`).style.display = 'block';
+        }
+
+        async function saveTag(filename) {
+            const newTags = document.getElementById(`input-${filename}`).value;
+            const resp = await fetch('/update_tag', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({filename: filename, tags: newTags})
+            });
+            if(resp.ok) {
+                // 更新本地数据并重绘，不用刷新页面
+                rawData[filename].tags = newTags;
+                render();
+            } else {
+                alert("修改失败");
+            }
+        }
+
         function setFilter(type) {
             currentFilter = type;
             document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -82,16 +168,8 @@
             render();
         }
         function toggleUpload() { document.getElementById('uploadBox').classList.toggle('show'); }
-        async function uploadFile() {
-            const file = document.getElementById('fileInput').files[0];
-            const tags = document.getElementById('tagInput').value;
-            if(!file || !tags) return alert("请完善信息");
-            const fd = new FormData(); fd.append('file', file); fd.append('tags', tags);
-            await fetch('/upload', {method:'POST', body:fd});
-            location.reload();
-        }
         async function deleteMeme(f) {
-            if(confirm("删除?")) {
+            if(confirm("确定删除？")) {
                 await fetch('/delete', {method:'POST', body:JSON.stringify({filename:f})});
                 delete rawData[f]; render();
             }
