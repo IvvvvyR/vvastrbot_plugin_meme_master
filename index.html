@@ -12,6 +12,7 @@
         .header-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .btn { padding: 8px 14px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.85rem; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; margin-right: 5px; }
         .btn-backup { background: #8b5cf6; color: white; }
+        .btn-settings { background: #64748b; color: white; }
         .btn-del-batch { background: var(--danger); color: white; display: none; }
         
         .controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 15px; }
@@ -26,32 +27,36 @@
         .card { background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); position: relative; border: 2px solid transparent; transition: all 0.2s; }
         .card.selected { border-color: var(--primary); transform: scale(0.98); }
         .card img { width: 100%; height: 140px; object-fit: cover; background: #f1f5f9; }
-        
         .card-body { padding: 8px; }
         .tag-display { font-size: 12px; color: #475569; display: flex; justify-content: space-between; align-items: center; }
         .edit-icon { cursor: pointer; color: #94a3b8; padding: 5px; }
         .tag-edit-area { display: none; margin-top: 5px; }
         .tag-edit-area input { width: 100%; padding: 4px; font-size: 12px; margin-bottom: 4px; }
-        
         .badge { position: absolute; top: 6px; left: 6px; padding: 2px 6px; border-radius: 4px; font-size: 10px; color: white; font-weight: bold; z-index: 2; }
         .badge-manual { background: rgba(59, 130, 246, 0.9); }
         .badge-auto { background: rgba(249, 115, 22, 0.9); }
-        
-        /* 选择模式遮罩 */
         .select-mask { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.3); z-index: 10; display: none; cursor: pointer; }
         .selection-mode .select-mask { display: block; }
         .check-icon { position: absolute; top: 5px; right: 5px; background: var(--primary); color: white; border-radius: 50%; width: 20px; height: 20px; display: none; align-items: center; justify-content: center; font-size: 12px; z-index: 11; }
         .card.selected .check-icon { display: flex; }
-
-        /* 批量上传进度条 */
         .progress-bar { height: 4px; background: #e2e8f0; margin-top: 10px; border-radius: 2px; overflow: hidden; display: none; }
         .progress-fill { height: 100%; background: #10b981; width: 0%; transition: width 0.3s; }
+
+        /* 设置弹窗样式 */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; justify-content: center; align-items: center; }
+        .modal { background: white; padding: 20px; border-radius: 12px; width: 300px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .modal h2 { margin-top: 0; font-size: 1.2rem; color: #1e293b; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 0.9rem; color: #64748b; margin-bottom: 5px; }
+        .form-group input { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
     </style>
 </head>
 <body>
     <div class="header-actions">
         <h1>🤍 机的表情包档案</h1>
         <div>
+            <button class="btn btn-settings" onclick="openSettings()">⚙️ 设置</button>
             <a href="/backup" class="btn btn-backup">📥 备份</a>
         </div>
     </div>
@@ -63,6 +68,29 @@
         <button class="btn" style="background:#10b981; color:white;" onclick="toggleUpload()">➕ 上传</button>
         <button class="btn" style="background:#f59e0b; color:white;" onclick="toggleSelectMode()" id="manageBtn">✅ 管理</button>
         <button class="btn btn-del-batch" id="batchDelBtn" onclick="deleteBatch()">🗑️ 删除选中</button>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal">
+            <h2>⚙️ 插件设置</h2>
+            <div class="form-group">
+                <label>捡垃圾冷却 (秒)</label>
+                <input type="number" id="conf_cooldown">
+            </div>
+            <div class="form-group">
+                <label>发图概率 (0-100%)</label>
+                <input type="number" id="conf_prob">
+            </div>
+            <div class="form-group">
+                <label>每小时限额 (张)</label>
+                <input type="number" id="conf_limit">
+            </div>
+            <div class="modal-actions">
+                <button class="btn" style="background:#cbd5e1" onclick="closeSettings()">取消</button>
+                <button class="btn" style="background:var(--primary); color:white" onclick="saveSettings()">💾 保存</button>
+            </div>
+        </div>
     </div>
 
     <div class="upload-section" id="uploadBox">
@@ -80,22 +108,20 @@
         let currentFilter = 'all';
         let isSelectionMode = false;
         let selectedFiles = new Set();
+        let currentConfig = {};
 
         function render() {
             const container = document.getElementById('gallery');
             container.innerHTML = '';
             const items = Object.entries(rawData).reverse();
-
             for (const [filename, info] of items) {
                 const tags = info.tags || "未分类"; 
                 const source = info.source || 'manual';
                 if (currentFilter !== 'all' && source !== currentFilter) continue;
-
                 const isSel = selectedFiles.has(filename);
                 const div = document.createElement('div');
                 div.className = `card ${isSel ? 'selected' : ''}`;
                 div.onclick = (e) => handleCardClick(filename, e);
-
                 div.innerHTML = `
                     <div class="badge ${source==='auto'?'badge-auto':'badge-manual'}">${source==='auto'?'AI':'我'}</div>
                     <div class="select-mask"></div>
@@ -117,6 +143,39 @@
             updateBatchBtn();
         }
 
+        // === 设置逻辑 ===
+        async function openSettings() {
+            // 获取当前配置
+            const res = await fetch('/get_config');
+            currentConfig = await res.json();
+            document.getElementById('conf_cooldown').value = currentConfig.pick_cooldown;
+            document.getElementById('conf_prob').value = currentConfig.reply_prob;
+            document.getElementById('conf_limit').value = currentConfig.max_per_hour;
+            document.getElementById('settingsModal').style.display = 'flex';
+        }
+
+        function closeSettings() {
+            document.getElementById('settingsModal').style.display = 'none';
+        }
+
+        async function saveSettings() {
+            const newConf = {
+                pick_cooldown: parseInt(document.getElementById('conf_cooldown').value),
+                reply_prob: parseInt(document.getElementById('conf_prob').value),
+                max_per_hour: parseInt(document.getElementById('conf_limit').value)
+            };
+            const res = await fetch('/update_config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(newConf)
+            });
+            if(res.ok) {
+                alert("设置已保存并生效！");
+                closeSettings();
+            } else alert("保存失败");
+        }
+
+        // === 其他原有逻辑 ===
         function toggleSelectMode() {
             isSelectionMode = !isSelectionMode;
             document.body.classList.toggle('selection-mode', isSelectionMode);
@@ -124,83 +183,52 @@
             selectedFiles.clear();
             render();
         }
-
         function handleCardClick(filename, event) {
             if(!isSelectionMode) return;
             if(selectedFiles.has(filename)) selectedFiles.delete(filename);
             else selectedFiles.add(filename);
             render();
         }
-
         async function deleteBatch() {
             if(selectedFiles.size === 0) return;
             if(!confirm(`确定删除选中的 ${selectedFiles.size} 张图吗？`)) return;
-            
-            await fetch('/batch_delete', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({filenames: Array.from(selectedFiles)})
-            });
-            
+            await fetch('/batch_delete', {method: 'POST', body: JSON.stringify({filenames: Array.from(selectedFiles)})});
             for(let f of selectedFiles) delete rawData[f];
-            toggleSelectMode(); // 退出管理模式
+            toggleSelectMode();
         }
-
         function updateBatchBtn() {
             const btn = document.getElementById('batchDelBtn');
-            if(isSelectionMode && selectedFiles.size > 0) {
-                btn.style.display = 'inline-flex';
-                btn.innerText = `🗑️ 删除 (${selectedFiles.size})`;
-            } else {
-                btn.style.display = 'none';
-            }
+            btn.style.display = (isSelectionMode && selectedFiles.size > 0) ? 'inline-flex' : 'none';
+            btn.innerText = `🗑️ 删除 (${selectedFiles.size})`;
         }
-
-        // 标签修改
         function showEdit(filename, e) {
-            e.stopPropagation(); // 防止触发选图
+            e.stopPropagation(); 
             document.getElementById(`disp-${filename}`).style.display = 'none';
             document.getElementById(`edit-${filename}`).style.display = 'block';
         }
-
         async function saveTag(filename) {
             const newTags = document.getElementById(`input-${filename}`).value;
-            const resp = await fetch('/update_tag', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({filename: filename, tags: newTags})
-            });
-            if(resp.ok) {
-                rawData[filename].tags = newTags;
-                render();
-            } else alert("修改失败");
+            const resp = await fetch('/update_tag', {method: 'POST', body: JSON.stringify({filename: filename, tags: newTags})});
+            if(resp.ok) { rawData[filename].tags = newTags; render(); } else alert("修改失败");
         }
-
-        // 上传与过滤
         async function batchUpload() {
             const files = document.getElementById('fileInput').files;
             const globalTag = document.getElementById('globalTagInput').value.trim() || "未分类";
             const status = document.getElementById('uploadStatus');
             const fill = document.getElementById('progressFill');
             document.getElementById('progressBar').style.display = 'block';
-
             if(files.length === 0) return alert("请选图！");
             let success = 0;
             for(let i=0; i<files.length; i++) {
                 const fd = new FormData();
                 fd.append('file', files[i]);
                 fd.append('tags', globalTag);
-                try {
-                    status.innerText = `正在上传 ${i+1}/${files.length}`;
-                    await fetch('/upload', {method: 'POST', body: fd});
-                    success++;
-                } catch(e){}
+                try { status.innerText = `正在上传 ${i+1}/${files.length}`; await fetch('/upload', {method: 'POST', body: fd}); success++; } catch(e){}
                 fill.style.width = `${((i+1)/files.length)*100}%`;
             }
             status.innerText = `✅ 完成 ${success} 张`;
             setTimeout(() => location.reload(), 1000);
         }
-
         function setFilter(type) {
             currentFilter = type;
             document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
