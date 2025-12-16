@@ -11,7 +11,7 @@ from aiohttp import web
 from astrbot.api.all import *
 from astrbot.api.message_components import Image, Plain
 
-@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+防刷屏", "12.0.0")
+@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+防刷屏", "12.2.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -214,30 +214,41 @@ class MemeMaster(Star):
         self.sent_count_hour += 1
         return f"系统提示：已发图 [{selected_file}]"
 
-    # 🛑 核心修复：更严格的过滤器
+    # 🛑 修复点：这里改成了最通用的获取方式
     @event_message_type(EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent):
-        # 1. 严格检查：必须是 AstrMessageEvent 类型
+        # 1. 过滤掉非消息事件
         if not isinstance(event, AstrMessageEvent): return
         
-        # 2. 严格检查：必须有消息对象，且必须是群聊或私聊
+        # 2. 严格过滤：必须是群聊或私聊
         if not event.message_obj or event.message_obj.type not in [MessageType.GROUP_MESSAGE, MessageType.FRIEND_MESSAGE]:
             return
 
-        # 3. 严格检查：消息不能为空
         msg = event.message_str
-        if not msg and not event.message_obj.message_chain: return
+        
+        # 3. 修复点：获取图片链接的逻辑改了！兼容性更强
+        img_url = None
+        
+        # 尝试方法 A：直接遍历 message (大多数版本)
+        if hasattr(event.message_obj, "message"):
+            for comp in event.message_obj.message:
+                if isinstance(comp, Image):
+                    img_url = comp.url
+                    break
+        
+        # 尝试方法 B：如果A不行，试着遍历 message_chain (旧版本)
+        if not img_url and hasattr(event.message_obj, "message_chain"):
+             for comp in event.message_obj.message_chain:
+                if isinstance(comp, Image):
+                    img_url = comp.url
+                    break
+
+        # 如果没有图，直接结束
+        if not img_url: return
 
         trigger_words = ["记住", "存图", "收录"]
         found_trigger = next((w for w in trigger_words if w in msg), None)
         
-        img_url = None
-        for comp in event.message_obj.message_chain:
-            if isinstance(comp, Image):
-                img_url = comp.url
-                break
-        if not img_url: return
-
         if found_trigger:
             tags = msg.replace(found_trigger, "").strip() or "未分类"
             async with aiohttp.ClientSession() as session:
