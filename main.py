@@ -11,7 +11,7 @@ from aiohttp import web
 from astrbot.api.all import *
 from astrbot.api.message_components import Image, Plain
 
-@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+分流版", "12.5.0")
+@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+修复版", "12.6.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -30,7 +30,9 @@ class MemeMaster(Star):
         self.data = self.load_data()
         self.local_config = self.load_config()
         
-        self.context.logger.info(f"🔍 [MemeMaster] v12.5 分流版加载完毕")
+        # 🔧 修复点：直接用 print，防止 context.logger 报错
+        print(f"🔍 [MemeMaster] v12.6 加载完毕，图片数: {len(self.data)}")
+        
         asyncio.create_task(self.start_web_server())
 
     def load_config(self):
@@ -90,7 +92,7 @@ class MemeMaster(Star):
         try:
             site = web.TCPSite(runner, "0.0.0.0", port)
             await site.start()
-            self.context.logger.info(f"✅ [MemeMaster] Web启动成功: {port}")
+            print(f"✅ [MemeMaster] Web启动成功: {port}")
         except: pass
 
     async def handle_index(self, request):
@@ -174,7 +176,7 @@ class MemeMaster(Star):
 
     @llm_tool(name="express_emotion_with_image")
     async def express_emotion_with_image(self, emotion: str):
-        self.context.logger.info(f"🔍 [MemeMaster] LLM调用发图: {emotion}")
+        print(f"🔍 [MemeMaster] LLM调用发图: {emotion}")
         if time.time() - self.last_sent_reset > 3600:
             self.sent_count_hour = 0
             self.last_sent_reset = time.time()
@@ -198,23 +200,20 @@ class MemeMaster(Star):
         self.sent_count_hour += 1
         return f"系统提示：已发图 [{selected_file}]"
 
-    # === 🛑 核心修复：两个函数，各自为战，绝不打架 ===
+    # === 分流处理，规避装饰器冲突 ===
     
-    # 1. 专门处理群消息
     @event_message_type(MessageType.GROUP_MESSAGE)
     async def on_group_message(self, event: AstrMessageEvent):
         await self._process_message(event)
 
-    # 2. 专门处理私聊消息
     @event_message_type(MessageType.FRIEND_MESSAGE)
     async def on_friend_message(self, event: AstrMessageEvent):
         await self._process_message(event)
 
-    # 3. 统一的后台处理逻辑
+    # 统一处理逻辑
     async def _process_message(self, event: AstrMessageEvent):
         msg = event.message_str
         
-        # 兼容性获取图片 URL
         img_url = None
         if hasattr(event.message_obj, "message"):
             for comp in event.message_obj.message:
@@ -259,7 +258,7 @@ class MemeMaster(Star):
             completion = resp.completion_text.strip()
             if completion.startswith("YES"):
                 tags = completion.split("|")[-1].strip()
-                self.context.logger.info(f"🖤 [机在捡垃圾] 存入: {tags}")
+                print(f"🖤 [机在捡垃圾] 存入: {tags}")
                 await self.save_image_bytes(content, tags, "auto", None, img_hash)
         except: pass
 
@@ -272,5 +271,5 @@ class MemeMaster(Star):
             self.data[file_name] = {"tags": tags, "source": source, "hash": img_hash}
             self.save_data()
             if source == "manual" and event:
-                self.context.logger.info(f"✅ 手动收录: {tags}")
+                print(f"✅ 手动收录: {tags}")
         except: pass
