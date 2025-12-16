@@ -11,7 +11,7 @@ from aiohttp import web
 from astrbot.api.all import *
 from astrbot.api.message_components import Image, Plain
 
-@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+修复版", "12.4.0")
+@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+分流版", "12.5.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -30,8 +30,7 @@ class MemeMaster(Star):
         self.data = self.load_data()
         self.local_config = self.load_config()
         
-        # 启动日志
-        self.context.logger.info(f"🔍 [MemeMaster] v12.4 加载完毕")
+        self.context.logger.info(f"🔍 [MemeMaster] v12.5 分流版加载完毕")
         asyncio.create_task(self.start_web_server())
 
     def load_config(self):
@@ -91,12 +90,12 @@ class MemeMaster(Star):
         try:
             site = web.TCPSite(runner, "0.0.0.0", port)
             await site.start()
-            self.context.logger.info(f"✅ [MemeMaster] 后台启动成功: 端口 {port}")
+            self.context.logger.info(f"✅ [MemeMaster] Web启动成功: {port}")
         except: pass
 
     async def handle_index(self, request):
         html_path = os.path.join(self.base_dir, "index.html")
-        if not os.path.exists(html_path): return web.Response(text="缺少 index.html", status=404)
+        if not os.path.exists(html_path): return web.Response(text="index.html missing", status=404)
         with open(html_path, "r", encoding="utf-8") as f: html = f.read()
         html = html.replace("{{MEME_DATA}}", json.dumps(self.data))
         return web.Response(text=html, content_type='text/html')
@@ -129,7 +128,7 @@ class MemeMaster(Star):
                 self.save_data()
                 return web.Response(text="ok")
             return web.Response(text="fail", status=404)
-        except Exception as e: return web.Response(text=str(e), status=500)
+        except: return web.Response(text="error", status=500)
     async def handle_batch_delete(self, request):
         try:
             data = await request.json()
@@ -175,7 +174,7 @@ class MemeMaster(Star):
 
     @llm_tool(name="express_emotion_with_image")
     async def express_emotion_with_image(self, emotion: str):
-        self.context.logger.info(f"🔍 [MemeMaster] LLM尝试调用发图工具: {emotion}")
+        self.context.logger.info(f"🔍 [MemeMaster] LLM调用发图: {emotion}")
         if time.time() - self.last_sent_reset > 3600:
             self.sent_count_hour = 0
             self.last_sent_reset = time.time()
@@ -195,16 +194,24 @@ class MemeMaster(Star):
         if not results: return f"系统提示：无 '{emotion}' 相关图片。"
         selected_file = random.choice(results)
         file_path = os.path.join(self.img_dir, selected_file)
-        self.context.logger.info(f"📤 [MemeMaster] 发送图片: {selected_file}")
         await self.context.send_message(self.context.get_event_queue().get_nowait(), [Image.fromFileSystem(file_path)])
         self.sent_count_hour += 1
         return f"系统提示：已发图 [{selected_file}]"
 
-    # 🛑 修复点：不再用 ALL，而是分别注册两个！
+    # === 🛑 核心修复：两个函数，各自为战，绝不打架 ===
+    
+    # 1. 专门处理群消息
     @event_message_type(MessageType.GROUP_MESSAGE)
+    async def on_group_message(self, event: AstrMessageEvent):
+        await self._process_message(event)
+
+    # 2. 专门处理私聊消息
     @event_message_type(MessageType.FRIEND_MESSAGE)
-    async def on_message(self, event: AstrMessageEvent):
-        # 不需要再检查 type 了，因为装饰器已经帮我们筛选了
+    async def on_friend_message(self, event: AstrMessageEvent):
+        await self._process_message(event)
+
+    # 3. 统一的后台处理逻辑
+    async def _process_message(self, event: AstrMessageEvent):
         msg = event.message_str
         
         # 兼容性获取图片 URL
