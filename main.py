@@ -10,7 +10,7 @@ import aiohttp
 from aiohttp import web
 from astrbot.api.all import *
 
-@register("vv_meme_master", "MemeMaster", "Web管理+强制发图修复版", "13.0.0")
+@register("vv_meme_master", "MemeMaster", "最终修复v13.1", "13.1.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -30,10 +30,9 @@ class MemeMaster(Star):
         self.data = self.load_data()
         self.local_config = self.load_config()
         
-        print(f"🔍 [MemeMaster] v13.0 加载完毕 | 图片库存: {len(self.data)}")
+        print(f"🔍 [MemeMaster] v13.1 加载成功 | 图片数: {len(self.data)}")
         asyncio.create_task(self.start_web_server())
 
-    # --- 配置与数据加载 ---
     def load_config(self):
         default_conf = {"web_port": 5000, "pick_cooldown": 30, "reply_prob": 100, "max_per_hour": 999}
         if not os.path.exists(self.config_file): return default_conf
@@ -74,7 +73,6 @@ class MemeMaster(Star):
             if isinstance(info, dict) and info.get("hash") == img_hash: return True
         return False
 
-    # --- Web 服务 ---
     async def start_web_server(self):
         port = self.local_config.get("web_port", 5000)
         app = web.Application()
@@ -95,7 +93,6 @@ class MemeMaster(Star):
             print(f"✅ [MemeMaster] Web启动成功: {port}")
         except: pass
 
-    # (Web Handle Functions 省略，保持原样，为了不让代码太长)
     async def handle_index(self, request):
         html_path = os.path.join(self.base_dir, "index.html")
         if not os.path.exists(html_path): return web.Response(text="index.html missing", status=404)
@@ -174,24 +171,21 @@ class MemeMaster(Star):
             return web.Response(text="ok")
         return web.Response(text="fail", status=404)
 
-
-    # =========================================================
-    # 核心修复 1：加上了 Docstring 说明书
-    # =========================================================
-
+    # ---------------------------------------------------------
+    # 核心部分：严格的类型注释
+    # ---------------------------------------------------------
+    
     @llm_tool(name="express_emotion_with_image")
     async def express_emotion_with_image(self, emotion: str):
         """
-        发送表情包工具。
-        当用户表达强烈情绪（如开心、难过、生气、哭、疑问）或明确要求看表情包时，
-        请务必调用此工具来发送图片，而不是仅用文字描述。
-        
-        :param emotion: 情绪关键词，例如：开心、难过、生气、搞怪、嘲讽、疑问
+        发送表情包/图片工具。
+        当用户想要看图、表情包，或者表达强烈情绪（开心、难过、生气）时调用。
+        :param emotion: 情绪关键词，必须是字符串。
         """
-        print(f"👉 [Debug] 成功触发发图工具，参数: {emotion}")
+        print(f"👉 [Debug] 触发工具成功, 参数: {emotion}")
         
         if not self.current_event:
-            print("❌ [Debug] 失败：没有找到发图对象 (current_event is None)")
+            print("❌ [Debug] 失败：没有目标 (current_event is None)")
             return "系统错误：找不到目标。"
 
         results = []
@@ -201,45 +195,34 @@ class MemeMaster(Star):
                 results.append(filename)
         
         if not results: 
-            # 备选：如果没找到，就随机发一张，防止空消息
-            print(f"⚠️ [Debug] 没找到 '{emotion}'，随机发一张兜底")
+            print(f"⚠️ [Debug] 无图: '{emotion}'")
             if self.data: results = list(self.data.keys())
-            else: return "系统提示：图库是空的。"
+            else: return "系统提示：图库为空。"
             
         selected_file = random.choice(results)
         file_path = os.path.join(self.img_dir, selected_file)
         
         try:
-            print(f"🚀 [Debug] 正在发送: {selected_file}")
+            print(f"🚀 [Debug] 发送中: {selected_file}")
             await self.context.send_message(self.current_event, [Image.fromFileSystem(file_path)])
-            return f"系统提示：已发送图片 [{selected_file}]"
+            return f"系统提示：已发送图片"
         except Exception as e:
-            print(f"❌ [Debug] 发送报错: {e}")
+            print(f"❌ [Debug] 报错: {e}")
             return f"系统错误：{e}"
-
-    
-    # =========================================================
-    # 核心修复 2：On_Message 里的强制触发逻辑
-    # =========================================================
 
     @event_message_type(EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent):
-        self.current_event = event # 锁定当前说话的人
-        
-        msg_obj = event.message_obj
+        self.current_event = event 
         msg = event.message_str
         
-        # --- 强制测试开关 ---
-        # 只要你说 "来张图 哭" 或者 "发表情 哭"，就绕过 AI 直接发！
+        # 强制触发后门
         if msg.startswith("来张图") or msg.startswith("发表情"):
-            keyword = msg.replace("来张图", "").replace("发表情", "").strip()
-            if not keyword: keyword = "搞怪" # 默认词
-            print(f"🔥 [Debug] 强制触发模式: {keyword}")
-            await self.express_emotion_with_image(keyword)
-            return # 强制发完就结束，不给 AI 处理了
-        # ------------------
+            kw = msg.replace("来张图", "").replace("发表情", "").strip() or "搞怪"
+            await self.express_emotion_with_image(kw)
+            return
 
-        # 后面是正常的收图逻辑
+        # 收图逻辑
+        msg_obj = event.message_obj
         img_url = None
         if hasattr(msg_obj, "message"):
             for comp in msg_obj.message:
@@ -250,11 +233,8 @@ class MemeMaster(Star):
 
         if not img_url: return
 
-        trigger_words = ["记住", "存图", "收录"]
-        found_trigger = next((w for w in trigger_words if w in msg), None)
-        
-        if found_trigger:
-            tags = msg.replace(found_trigger, "").strip() or "未分类"
+        if "记住" in msg or "存图" in msg:
+            tags = msg.replace("记住", "").replace("存图", "").strip() or "未分类"
             async with aiohttp.ClientSession() as session:
                 async with session.get(img_url) as resp:
                     if resp.status == 200:
@@ -284,7 +264,7 @@ class MemeMaster(Star):
             completion = resp.completion_text.strip()
             if completion.startswith("YES"):
                 tags = completion.split("|")[-1].strip()
-                print(f"🖤 [机在捡垃圾] 存入: {tags}")
+                print(f"🖤 [捡垃圾] 存入: {tags}")
                 await self.save_image_bytes(content, tags, "auto", None, img_hash)
         except: pass
 
