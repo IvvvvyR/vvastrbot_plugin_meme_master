@@ -2,83 +2,412 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>表情包管理</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>机的档案</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f4f4f5; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .btn { padding: 8px 15px; border-radius: 6px; border: none; cursor: pointer; text-decoration: none; font-size: 14px; background: white; border: 1px solid #ddd; }
-        .btn-primary { background: #3b82f6; color: white; border: none; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
-        .card { background: white; padding: 5px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .card img { width: 100%; height: 120px; object-fit: cover; border-radius: 4px; }
-        .tag { font-size: 12px; color: #666; margin-top: 5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-        .del-btn { color: red; font-size: 12px; cursor: pointer; float: right; }
+        :root { --primary: #6366f1; --bg: #f8fafc; --text: #334155; --card-bg: #ffffff; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; padding-bottom: 80px; user-select: none; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .header h1 { font-size: 1.2rem; margin: 0; color: #1e293b; font-weight: 800; }
+        .header-icons { display: flex; gap: 10px; }
+        .icon-btn { background: white; border: 1px solid #e2e8f0; border-radius: 8px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; font-size: 1.2rem; }
+        
+        .search-box { position: relative; margin-bottom: 15px; }
+        .search-box input { width: 100%; padding: 12px 15px; padding-left: 40px; border: none; border-radius: 12px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.03); font-size: 0.95rem; outline: none; }
+        .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+
+        .controls-scroll { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 5px; margin-bottom: 15px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .controls-scroll::-webkit-scrollbar { display: none; }
+        .btn { padding: 6px 14px; border-radius: 20px; border: none; font-weight: 600; font-size: 0.85rem; white-space: nowrap; cursor: pointer; transition: all 0.2s; background: white; color: #64748b; border: 1px solid #e2e8f0; }
+        .btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .btn-action { background: #10b981; color: white; border: none; }
+        .btn-manage { background: #f59e0b; color: white; border: none; }
+        .btn-delete { background: #ef4444; color: white; border: none; display: none; }
+        .btn-import { background: #8b5cf6; color: white; border: none; }
+
+        .gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        @media (min-width: 600px) { .gallery { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); } }
+        
+        .card { background: var(--card-bg); border-radius: 12px; overflow: hidden; position: relative; box-shadow: 0 2px 4px rgba(0,0,0,0.03); border: 2px solid transparent; transition: transform 0.1s; }
+        .card:active { transform: scale(0.98); }
+        .card.selected { border-color: var(--primary); background: #e0e7ff; }
+        .card img { width: 100%; height: 150px; object-fit: cover; background: #f1f5f9; display: block; pointer-events: none; }
+        .card-body { padding: 10px; pointer-events: none; }
+        .card-body * { pointer-events: auto; }
+        
+        .tag-text { font-size: 0.8rem; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .edit-btn { float: right; color: #cbd5e1; cursor: pointer; font-size: 0.9rem; padding: 5px; }
+        .edit-area { display: none; margin-top: 5px; }
+        .edit-area input { width: 100%; padding: 4px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.8rem; }
+        
+        .badge { position: absolute; top: 8px; left: 8px; padding: 3px 6px; border-radius: 6px; font-size: 0.7rem; color: white; font-weight: bold; z-index: 2; backdrop-filter: blur(2px); }
+        .badge-manual { background: rgba(59, 130, 246, 0.85); }
+        .badge-auto { background: rgba(249, 115, 22, 0.85); }
+
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 25px; color: #64748b; font-size: 0.9rem; }
+        .page-btn { background: white; width: 40px; height: 40px; border-radius: 50%; border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.05); cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--text); }
+        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .upload-panel { position: fixed; bottom: 0; left: 0; right: 0; background: white; padding: 20px; border-radius: 20px 20px 0 0; box-shadow: 0 -5px 20px rgba(0,0,0,0.1); z-index: 100; transform: translateY(100%); transition: transform 0.3s; }
+        .upload-panel.show { transform: translateY(0); }
+        
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; justify-content: center; align-items: center; }
+        .modal { background: white; padding: 20px; border-radius: 12px; width: 85%; max-width: 320px; max-height: 80vh; overflow-y: auto; }
+        .form-row { margin-bottom: 15px; }
+        .form-row label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #64748b; }
+        .form-row input { width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 8px; }
+        
+        .check-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.4); display: none; z-index: 5; pointer-events: none; }
+        .selection-mode .check-overlay { display: block; }
+        .check-mark { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; background: white; border: 2px solid #cbd5e1; border-radius: 50%; z-index: 6; display: none; align-items: center; justify-content: center; font-size: 12px; color: white; pointer-events: none; }
+        .selection-mode .check-mark { display: flex; }
+        .card.selected .check-mark { background: var(--primary); border-color: var(--primary); }
+
+        .import-zone { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 30px 20px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 15px; }
+        .import-zone:hover { border-color: var(--primary); background: #f8fafc; }
+        .import-zone.drag-over { border-color: var(--primary); background: #ede9fe; }
+        .progress-bar { width: 100%; height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; margin-top: 10px; display: none; }
+        .progress-fill { height: 100%; background: var(--primary); transition: width 0.3s; }
     </style>
 </head>
 <body>
+
     <div class="header">
-        <h2>📂 表情包管理</h2>
-        <div>
-            <a href="/backup" class="btn">📥 备份</a>
-            <button class="btn btn-primary" onclick="document.getElementById('restoreInput').click()">📤 导入备份</button>
-            <input type="file" id="restoreInput" hidden accept=".zip" onchange="restoreBackup()">
+        <h1>🤍 机的档案</h1>
+        <div class="header-icons">
+            <div class="icon-btn" onclick="openSettings()">⚙️</div>
+            <div class="icon-btn" onclick="openImport()">📤</div>
+            <a href="/backup" class="icon-btn">📥</a>
         </div>
     </div>
 
-    <div class="grid" id="gallery"></div>
+    <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="搜标签 (如: 搞怪)..." oninput="handleSearch()">
+    </div>
 
+    <div class="controls-scroll">
+        <button class="btn active" onclick="setFilter('all', this)">全部</button>
+        <button class="btn" onclick="setFilter('manual', this)">我传的</button>
+        <button class="btn" onclick="setFilter('auto', this)">机捡的</button>
+        <div style="width: 10px; flex-shrink: 0;"></div>
+        <button class="btn btn-action" onclick="toggleUpload()">➕ 上传</button>
+        <button class="btn btn-manage" onclick="toggleSelectMode()" id="manageBtn">✅ 管理</button>
+        <button class="btn btn-delete" id="batchDelBtn" onclick="deleteBatch()">🗑️ 删除</button>
+    </div>
+
+    <div class="gallery" id="gallery"></div>
+
+    <div class="pagination" id="pagination">
+        <button class="page-btn" onclick="changePage(-1)">❮</button>
+        <span id="pageInfo">1 / 1</span>
+        <button class="page-btn" onclick="changePage(1)">❯</button>
+    </div>
+
+    <!-- 上传面板 -->
+    <div class="upload-panel" id="uploadBox">
+        <h3 style="margin-top:0">上传新图</h3>
+        <input type="file" id="fileInput" accept="image/*" multiple style="width:100%; margin-bottom:10px;">
+        <input type="text" id="globalTagInput" placeholder="统一标签 (选填)" style="width:100%; padding:10px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:10px; box-sizing: border-box;">
+        <button class="btn btn-action" style="width:100%; padding:12px;" onclick="batchUpload()">🚀 开始上传</button>
+        <div style="text-align:center; margin-top:10px; color:#94a3b8" onclick="toggleUpload()">关闭</div>
+        <div id="uploadStatus" style="text-align:center; font-size:12px; margin-top:5px; color:#64748b;"></div>
+    </div>
+
+    <!-- 导入备份弹窗 -->
+    <div class="modal-overlay" id="importModal">
+        <div class="modal">
+            <h3 style="margin-top:0">📤 导入备份</h3>
+            <div class="import-zone" id="importZone" onclick="document.getElementById('backupFile').click()">
+                <div style="font-size: 3rem; margin-bottom: 10px;">📦</div>
+                <div style="color: #64748b; font-size: 0.9rem;">点击或拖拽 ZIP 文件到这里</div>
+                <div style="color: #94a3b8; font-size: 0.75rem; margin-top: 5px;">支持导入之前导出的备份包</div>
+            </div>
+            <input type="file" id="backupFile" accept=".zip" style="display: none;" onchange="handleBackupFile(this.files[0])">
+            <div class="progress-bar" id="importProgress">
+                <div class="progress-fill" id="importProgressFill"></div>
+            </div>
+            <div id="importStatus" style="text-align:center; font-size:0.85rem; color:#64748b; margin-top:10px;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button class="btn" onclick="closeImport()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal">
+            <h3 style="margin-top:0">⚙️ 插件设置</h3>
+            <div class="form-row"><label>发图概率 (%)</label><input type="number" id="conf_prob"></div>
+            <div class="form-row"><label>冷却时间 (秒)</label><input type="number" id="conf_cooldown"></div>
+            <div class="form-row"><label>每小时限额</label><input type="number" id="conf_limit"></div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button class="btn" onclick="closeSettings()">取消</button>
+                <button class="btn btn-action" onclick="saveSettings()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script>
-        const rawData = {{MEME_DATA}};
-        
+        const rawData = {{MEME_DATA}}; 
+        let appState = { filter: 'all', search: '', page: 1, pageSize: 20, selectionMode: false, selected: new Set(), filteredItems: [] };
+        let longPressTimer;
+
+        function init() { processData(); render(); setupDragDrop(); }
+
+        function processData() {
+            let items = Object.entries(rawData).reverse();
+            if (appState.filter !== 'all') items = items.filter(([_, info]) => (info.source || 'manual') === appState.filter);
+            if (appState.search) { const q = appState.search.toLowerCase(); items = items.filter(([_, info]) => (info.tags || "").toLowerCase().includes(q)); }
+            appState.filteredItems = items;
+            appState.page = 1;
+            updatePagination();
+        }
+
         function render() {
-            const container = document.getElementById("gallery");
-            container.innerHTML = "";
-            Object.entries(rawData).reverse().forEach(([fname, info]) => {
-                const div = document.createElement("div");
-                div.className = "card";
-                div.innerHTML = \`
-                    <img src="/images/\${fname}" loading="lazy" onclick="window.open('/images/\${fname}')">
-                    <div class="tag">
-                        \${info.tags || "无"}
-                        <span class="del-btn" onclick="del('\${fname}')">删</span>
+            const container = document.getElementById('gallery');
+            container.innerHTML = '';
+            const start = (appState.page - 1) * appState.pageSize;
+            const pageItems = appState.filteredItems.slice(start, start + appState.pageSize);
+
+            pageItems.forEach(([filename, info]) => {
+                const tags = info.tags || "未分类";
+                const source = info.source || 'manual';
+                const isSel = appState.selected.has(filename);
+                
+                const div = document.createElement('div');
+                div.className = `card ${isSel ? 'selected' : ''}`;
+                
+                div.onclick = () => handleCardClick(filename);
+                div.oncontextmenu = (e) => { e.preventDefault(); handleLongPress(filename); };
+                div.ontouchstart = (e) => { 
+                    longPressTimer = setTimeout(() => handleLongPress(filename), 600); 
+                };
+                div.ontouchend = () => clearTimeout(longPressTimer);
+                div.ontouchmove = () => clearTimeout(longPressTimer);
+                
+                div.innerHTML = `
+                    <div class="badge ${source==='auto'?'badge-auto':'badge-manual'}">${source==='auto'?'AI':'我'}</div>
+                    <div class="check-overlay"></div>
+                    <div class="check-mark">✓</div>
+                    <img src="/images/${filename}" loading="lazy">
+                    <div class="card-body">
+                        <div id="disp-${filename}">
+                            <div class="tag-text">${tags}</div>
+                            <span class="edit-btn" onclick="showEdit('${filename}', event)">✎</span>
+                        </div>
+                        <div class="edit-area" id="edit-${filename}" onclick="event.stopPropagation()">
+                            <input type="text" value="${tags}" id="input-${filename}" onkeydown="if(event.key==='Enter') saveTag('${filename}')">
+                        </div>
                     </div>
-                \`;
+                `;
                 container.appendChild(div);
             });
+            updatePagination();
+            updateUI();
         }
 
-        async def(fname) {
-            if(!confirm("确定删除吗？")) return;
-            await fetch("/delete", {method: "POST", body: JSON.stringify({filename: fname})});
-            delete rawData[fname];
-            render();
-        }
-        
-        // 核心：上传备份功能
-        async function restoreBackup() {
-            const file = document.getElementById("restoreInput").files[0];
-            if(!file) return;
-            if(!confirm("⚠️ 警告：导入备份将覆盖当前的图片库，确定吗？")) return;
-            
-            const fd = new FormData();
-            fd.append("file", file);
-            
-            alert("正在上传并解压，请稍候...");
-            try {
-                const res = await fetch("/restore", {method: "POST", body: fd});
-                if(res.ok) {
-                    alert("✅ 导入成功！页面将刷新。");
-                    location.reload();
-                } else {
-                    alert("❌ 导入失败");
-                }
-            } catch(e) {
-                alert("❌ 上传出错: " + e);
+        function handleLongPress(filename) {
+            if(appState.selectionMode) return;
+            if(navigator.vibrate) navigator.vibrate(50);
+            if(confirm("🗑️ 确定要删除这张图吗？")) {
+                deleteSingle(filename);
             }
         }
 
-        render();
+        async function deleteSingle(filename) {
+            await fetch('/delete', {method:'POST', body:JSON.stringify({filename})});
+            delete rawData[filename];
+            processData();
+            render();
+        }
+
+        function handleCardClick(filename) {
+            if (appState.selectionMode) {
+                if (appState.selected.has(filename)) appState.selected.delete(filename);
+                else appState.selected.add(filename);
+                render();
+                updateUI();
+            } else {
+                window.open(`/images/${filename}`, '_blank');
+            }
+        }
+
+        function setFilter(type, btn) {
+            appState.filter = type;
+            document.querySelectorAll('.controls-scroll .btn').forEach(b => { if(!b.classList.contains('btn-action') && !b.classList.contains('btn-manage') && !b.classList.contains('btn-import')) b.classList.remove('active'); });
+            btn.classList.add('active');
+            processData(); render();
+        }
+        function handleSearch() { appState.search = document.getElementById('searchInput').value.trim(); processData(); render(); }
+        function changePage(delta) {
+            const max = Math.ceil(appState.filteredItems.length / appState.pageSize) || 1;
+            const next = appState.page + delta;
+            if (next >= 1 && next <= max) { appState.page = next; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+        }
+        function updatePagination() {
+            const max = Math.ceil(appState.filteredItems.length / appState.pageSize) || 1;
+            document.getElementById('pageInfo').innerText = `${appState.page} / ${max}`;
+            document.getElementById('pagination').style.display = appState.filteredItems.length === 0 ? 'none' : 'flex';
+        }
+        function toggleSelectMode() {
+            appState.selectionMode = !appState.selectionMode;
+            document.body.classList.toggle('selection-mode', appState.selectionMode);
+            const btn = document.getElementById('manageBtn');
+            btn.innerText = appState.selectionMode ? '完成' : '✅ 管理';
+            btn.style.backgroundColor = appState.selectionMode ? '#64748b' : '#f59e0b';
+            if (!appState.selectionMode) appState.selected.clear();
+            render(); updateUI();
+        }
+        function updateUI() {
+            const delBtn = document.getElementById('batchDelBtn');
+            delBtn.style.display = (appState.selectionMode && appState.selected.size > 0) ? 'inline-block' : 'none';
+            delBtn.innerText = `🗑️ 删 ${appState.selected.size} 张`;
+        }
+        function showEdit(filename, e) {
+            e.stopPropagation();
+            document.getElementById(`disp-${filename}`).style.display = 'none';
+            document.getElementById(`edit-${filename}`).style.display = 'block';
+            document.getElementById(`input-${filename}`).focus();
+        }
+        async function saveTag(filename) {
+            const newTags = document.getElementById(`input-${filename}`).value;
+            const res = await fetch('/update_tag', { method: 'POST', body: JSON.stringify({filename, tags: newTags}) });
+            if(res.ok) { rawData[filename].tags = newTags; document.getElementById(`disp-${filename}`).style.display = 'block'; document.getElementById(`edit-${filename}`).style.display = 'none'; processData(); render(); }
+        }
+        async function deleteBatch() {
+            if(!confirm(`确定删除这 ${appState.selected.size} 张图片吗？`)) return;
+            await fetch('/batch_delete', { method: 'POST', body: JSON.stringify({filenames: Array.from(appState.selected)}) });
+            appState.selected.forEach(f => delete rawData[f]);
+            appState.selected.clear(); toggleSelectMode(); processData(); render();
+        }
+        async function batchUpload() {
+            const files = document.getElementById('fileInput').files;
+            const globalTag = document.getElementById('globalTagInput').value.trim();
+            const status = document.getElementById('uploadStatus');
+            if(files.length === 0) return;
+            status.innerText = "上传中...";
+            for(let i=0; i<files.length; i++) {
+                const fd = new FormData(); fd.append('file', files[i]); fd.append('tags', globalTag || "未分类");
+                try { await fetch('/upload', {method: 'POST', body: fd}); } catch(e){}
+                status.innerText = `进度: ${i+1}/${files.length}`;
+            }
+            status.innerText = "上传完成，即将刷新"; setTimeout(() => location.reload(), 1000);
+        }
+        function toggleUpload() { document.getElementById('uploadBox').classList.toggle('show'); }
+        async function openSettings() {
+            const res = await fetch('/get_config'); const conf = await res.json();
+            document.getElementById('conf_prob').value = conf.reply_prob; document.getElementById('conf_cooldown').value = conf.pick_cooldown; document.getElementById('conf_limit').value = conf.max_per_hour;
+            document.getElementById('settingsModal').style.display = 'flex';
+        }
+        function closeSettings() { document.getElementById('settingsModal').style.display = 'none'; }
+        async function saveSettings() {
+            const conf = { reply_prob: parseInt(document.getElementById('conf_prob').value), pick_cooldown: parseInt(document.getElementById('conf_cooldown').value), max_per_hour: parseInt(document.getElementById('conf_limit').value) };
+            await fetch('/update_config', {method:'POST', body:JSON.stringify(conf)}); alert("保存成功"); closeSettings();
+        }
+
+        // ============ 导入备份功能 ============
+        function openImport() {
+            document.getElementById('importModal').style.display = 'flex';
+            document.getElementById('importStatus').innerText = '';
+            document.getElementById('importProgress').style.display = 'none';
+        }
+        function closeImport() {
+            document.getElementById('importModal').style.display = 'none';
+        }
+
+        function setupDragDrop() {
+            const zone = document.getElementById('importZone');
+            zone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                zone.classList.add('drag-over');
+            });
+            zone.addEventListener('dragleave', () => {
+                zone.classList.remove('drag-over');
+            });
+            zone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                zone.classList.remove('drag-over');
+                const files = e.dataTransfer.files;
+                if(files.length > 0 && files[0].name.endsWith('.zip')) {
+                    handleBackupFile(files[0]);
+                }
+            });
+        }
+
+        async function handleBackupFile(file) {
+            if(!file || !file.name.endsWith('.zip')) {
+                alert('请选择 ZIP 格式的备份文件');
+                return;
+            }
+
+            const status = document.getElementById('importStatus');
+            const progress = document.getElementById('importProgress');
+            const fill = document.getElementById('importProgressFill');
+            
+            status.innerText = '正在解析备份文件...';
+            progress.style.display = 'block';
+            fill.style.width = '10%';
+
+            try {
+                const zip = await JSZip.loadAsync(file);
+                
+                // 检查备份文件结构
+                if(!zip.files['memes.json'] || !zip.files['images/']) {
+                    throw new Error('备份文件格式不正确');
+                }
+
+                fill.style.width = '30%';
+                status.innerText = '正在读取数据...';
+
+                // 读取 memes.json
+                const memesJson = await zip.files['memes.json'].async('text');
+                const memesData = JSON.parse(memesJson);
+
+                fill.style.width = '50%';
+                status.innerText = '正在上传图片...';
+
+                // 上传所有图片
+                const imageFiles = Object.keys(zip.files).filter(name => name.startsWith('images/') && name !== 'images/');
+                let uploaded = 0;
+
+                for(const imgPath of imageFiles) {
+                    const filename = imgPath.replace('images/', '');
+                    const imgBlob = await zip.files[imgPath].async('blob');
+                    
+                    const fd = new FormData();
+                    fd.append('file', imgBlob, filename);
+                    fd.append('tags', memesData[filename]?.tags || '未分类');
+                    
+                    try {
+                        await fetch('/upload', {method: 'POST', body: fd});
+                    } catch(e) {
+                        console.error('上传失败:', filename, e);
+                    }
+
+                    uploaded++;
+                    const percent = 50 + (uploaded / imageFiles.length * 40);
+                    fill.style.width = percent + '%';
+                    status.innerText = `正在上传图片 ${uploaded}/${imageFiles.length}`;
+                }
+
+                fill.style.width = '100%';
+                status.innerText = '✅ 导入成功！即将刷新...';
+                status.style.color = '#10b981';
+
+                setTimeout(() => location.reload(), 1500);
+
+            } catch(error) {
+                status.innerText = '❌ 导入失败: ' + error.message;
+                status.style.color = '#ef4444';
+                console.error('导入错误:', error);
+            }
+        }
+
+        init();
     </script>
 </body>
 </html>
