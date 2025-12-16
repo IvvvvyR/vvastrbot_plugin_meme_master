@@ -74,7 +74,7 @@ class MemeMaster(Star):
 
     # ================== 自动监听 ==================
 
-    @filter.event_message_type(EventMessageType.ALL)
+    @filter.event_message_type(EventMessageType.IMAGE)
     async def on_message(self, event: AstrMessageEvent):
         img_url = self._get_img_url(event)
         if not img_url:
