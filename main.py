@@ -11,7 +11,7 @@ from aiohttp import web
 from astrbot.api.all import *
 from astrbot.api.message_components import Image, Plain
 
-@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+备份", "10.0.0")
+@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+备份", "10.1.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -24,29 +24,35 @@ class MemeMaster(Star):
         self.last_sent_reset = time.time()
         
         if not os.path.exists(self.img_dir): os.makedirs(self.img_dir)
-        self.data = self.load_data()
+        self.data = self.load_data() # 这里会自动清洗坏数据
         asyncio.create_task(self.start_web_server())
 
     def config_schema(self):
         return [
             {"name": "web_port", "type": "int", "default": 5000, "description": "Web后台端口"},
-            {"name": "pick_cooldown", "type": "int", "default": 30, "description": "捡垃圾冷却"},
-            {"name": "reply_prob", "type": "int", "default": 80, "description": "发图概率"},
-            {"name": "max_per_hour", "type": "int", "default": 20, "description": "限额"}
+            {"name": "pick_cooldown", "type": "int", "default": 30, "description": "捡垃圾冷却(秒)"},
+            {"name": "reply_prob", "type": "int", "default": 80, "description": "发图概率(0-100)"},
+            {"name": "max_per_hour", "type": "int", "default": 20, "description": "每小时发图上限"}
         ]
 
+    # 🧼 数据清洗与加载
     def load_data(self):
         if not os.path.exists(self.data_file): return {}
         try:
             with open(self.data_file, "r", encoding="utf-8") as f:
                 raw_data = json.load(f)
-                new_data = {}
+                clean_data = {}
                 for k, v in raw_data.items():
+                    # 1. 过滤掉看起来像乱码或没有后缀名的幽灵文件
+                    if not k.endswith(('.jpg', '.png', '.gif', '.jpeg', '.webp')):
+                        continue
+                    
+                    # 2. 格式升级兼容
                     if isinstance(v, str):
-                        new_data[k] = {"tags": v, "source": "manual", "hash": ""}
+                        clean_data[k] = {"tags": v, "source": "manual", "hash": ""}
                     else:
-                        new_data[k] = v
-                return new_data
+                        clean_data[k] = v
+                return clean_data
         except: return {}
 
     def save_data(self):
@@ -65,11 +71,10 @@ class MemeMaster(Star):
     async def start_web_server(self):
         port = self.config.get("web_port", 5000)
         app = web.Application()
-        # 注册路由：确保 update_tag 和 batch_delete 都在
         app.router.add_get('/', self.handle_index)
         app.router.add_post('/upload', self.handle_upload)
         app.router.add_post('/delete', self.handle_delete)
-        app.router.add_post('/batch_delete', self.handle_batch_delete) # 新增批量删除
+        app.router.add_post('/batch_delete', self.handle_batch_delete)
         app.router.add_post('/update_tag', self.handle_update_tag)
         app.router.add_get('/backup', self.handle_backup)
         app.router.add_static('/images/', path=self.img_dir, name='images')
@@ -103,16 +108,15 @@ class MemeMaster(Star):
             filename = data.get("filename")
             new_tags = data.get("tags")
             if filename in self.data:
+                # 再次确保格式正确
                 if isinstance(self.data[filename], str):
                     self.data[filename] = {"tags": self.data[filename], "source": "manual", "hash": ""}
                 self.data[filename]["tags"] = new_tags
                 self.save_data()
                 return web.Response(text="ok")
             return web.Response(text="fail", status=404)
-        except Exception as e:
-            return web.Response(text=str(e), status=500)
+        except Exception as e: return web.Response(text=str(e), status=500)
 
-    # 新增：批量删除接口
     async def handle_batch_delete(self, request):
         try:
             data = await request.json()
@@ -126,31 +130,43 @@ class MemeMaster(Star):
             return web.Response(text="ok")
         except: return web.Response(text="fail", status=500)
 
+    # 🔧 修复版上传逻辑：更聪明地解析数据
     async def handle_upload(self, request):
         reader = await request.multipart()
-        field = await reader.next()
-        if field.name == 'file':
-            filename = field.filename
-            file_content = bytearray()
-            while True:
-                chunk = await field.read_chunk()
-                if not chunk: break
-                file_content.extend(chunk)
-            img_hash = self.calculate_md5(file_content)
+        file_data = None
+        filename = None
+        tags = "未分类"
+        
+        # 循环读取所有字段，不依赖顺序
+        while True:
+            field = await reader.next()
+            if field is None: break
+            
+            if field.name == 'file':
+                filename = field.filename
+                # 防止空文件上传
+                if not filename: continue 
+                file_data = await field.read()
+            elif field.name == 'tags':
+                tags = (await field.text()).strip() or "未分类"
+
+        if file_data and filename:
+            # 必须有后缀名才保存，防止保存幽灵文件
+            if not filename.lower().endswith(('.jpg', '.png', '.gif', '.jpeg', '.webp')):
+                return web.Response(text="invalid file type", status=400)
+
+            img_hash = self.calculate_md5(file_data)
             if os.path.exists(os.path.join(self.img_dir, filename)):
                 filename = f"{int(time.time())}_{filename}"
-            with open(os.path.join(self.img_dir, filename), 'wb') as f: f.write(file_content)
             
-            tags = "未分类"
-            try:
-                tags_field = await reader.next()
-                if tags_field: tags = (await tags_field.text()).strip() or "未分类"
-            except: pass
+            with open(os.path.join(self.img_dir, filename), 'wb') as f:
+                f.write(file_data)
             
             self.data[filename] = {"tags": tags, "source": "manual", "hash": img_hash}
             self.save_data()
             return web.Response(text="ok")
-        return web.Response(text="fail", status=400)
+        
+        return web.Response(text="no file", status=400)
 
     async def handle_delete(self, request):
         data = await request.json()
@@ -229,7 +245,6 @@ class MemeMaster(Star):
             completion = resp.completion_text.strip()
             if completion.startswith("YES"):
                 tags = completion.split("|")[-1].strip()
-                # 🖤 定制化日志
                 self.context.logger.info(f"🖤 [机在捡垃圾] 存入: {tags}")
                 await self.save_image_bytes(content, tags, "auto", None, img_hash)
         except: pass
