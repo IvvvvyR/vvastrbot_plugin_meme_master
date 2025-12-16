@@ -2,241 +2,293 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>机的表情包档案</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>机的档案</title>
     <style>
-        :root { --primary: #6366f1; --danger: #ef4444; --bg: #f8fafc; --text: #334155; }
-        body { font-family: -apple-system, sans-serif; background: var(--bg); padding: 15px; max-width: 1000px; margin: 0 auto; color: var(--text); }
-        h1 { text-align: center; font-size: 1.5rem; margin-bottom: 1rem; color: #1e293b; }
+        :root { --primary: #6366f1; --bg: #f8fafc; --text: #334155; --card-bg: #ffffff; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; padding-bottom: 80px; user-select: none; }
         
-        .header-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .btn { padding: 8px 14px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.85rem; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; margin-right: 5px; }
-        .btn-backup { background: #8b5cf6; color: white; }
-        .btn-settings { background: #64748b; color: white; }
-        .btn-del-batch { background: var(--danger); color: white; display: none; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .header h1 { font-size: 1.2rem; margin: 0; color: #1e293b; font-weight: 800; }
+        .header-icons { display: flex; gap: 10px; }
+        .icon-btn { background: white; border: 1px solid #e2e8f0; border-radius: 8px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; font-size: 1.2rem; }
         
-        .controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 15px; }
-        .filter-btn { background: white; border: 1px solid #cbd5e1; color: #64748b; }
-        .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .search-box { position: relative; margin-bottom: 15px; }
+        .search-box input { width: 100%; padding: 12px 15px; padding-left: 40px; border: none; border-radius: 12px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.03); font-size: 0.95rem; outline: none; }
+        .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
 
-        .upload-section { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; display: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-        .upload-section.show { display: block; }
-        .btn-upload-big { background: #10b981; color: white; width: 100%; margin-top: 10px; padding: 12px; font-size: 1rem; }
+        .controls-scroll { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 5px; margin-bottom: 15px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .controls-scroll::-webkit-scrollbar { display: none; }
+        .btn { padding: 6px 14px; border-radius: 20px; border: none; font-weight: 600; font-size: 0.85rem; white-space: nowrap; cursor: pointer; transition: all 0.2s; background: white; color: #64748b; border: 1px solid #e2e8f0; }
+        .btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .btn-action { background: #10b981; color: white; border: none; }
+        .btn-manage { background: #f59e0b; color: white; border: none; }
+        .btn-delete { background: #ef4444; color: white; border: none; display: none; }
 
-        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
-        .card { background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); position: relative; border: 2px solid transparent; transition: all 0.2s; }
-        .card.selected { border-color: var(--primary); transform: scale(0.98); }
-        .card img { width: 100%; height: 140px; object-fit: cover; background: #f1f5f9; }
-        .card-body { padding: 8px; }
-        .tag-display { font-size: 12px; color: #475569; display: flex; justify-content: space-between; align-items: center; }
-        .edit-icon { cursor: pointer; color: #94a3b8; padding: 5px; }
-        .tag-edit-area { display: none; margin-top: 5px; }
-        .tag-edit-area input { width: 100%; padding: 4px; font-size: 12px; margin-bottom: 4px; }
-        .badge { position: absolute; top: 6px; left: 6px; padding: 2px 6px; border-radius: 4px; font-size: 10px; color: white; font-weight: bold; z-index: 2; }
-        .badge-manual { background: rgba(59, 130, 246, 0.9); }
-        .badge-auto { background: rgba(249, 115, 22, 0.9); }
-        .select-mask { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.3); z-index: 10; display: none; cursor: pointer; }
-        .selection-mode .select-mask { display: block; }
-        .check-icon { position: absolute; top: 5px; right: 5px; background: var(--primary); color: white; border-radius: 50%; width: 20px; height: 20px; display: none; align-items: center; justify-content: center; font-size: 12px; z-index: 11; }
-        .card.selected .check-icon { display: flex; }
-        .progress-bar { height: 4px; background: #e2e8f0; margin-top: 10px; border-radius: 2px; overflow: hidden; display: none; }
-        .progress-fill { height: 100%; background: #10b981; width: 0%; transition: width 0.3s; }
+        .gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        @media (min-width: 600px) { .gallery { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); } }
+        
+        .card { background: var(--card-bg); border-radius: 12px; overflow: hidden; position: relative; box-shadow: 0 2px 4px rgba(0,0,0,0.03); border: 2px solid transparent; transition: transform 0.1s; }
+        .card:active { transform: scale(0.98); } /* 按下反馈 */
+        .card.selected { border-color: var(--primary); background: #e0e7ff; }
+        .card img { width: 100%; height: 150px; object-fit: cover; background: #f1f5f9; display: block; pointer-events: none; /* 让图片不阻挡长按事件 */ }
+        .card-body { padding: 10px; pointer-events: none; /* 让文字不阻挡长按事件 */ }
+        .card-body * { pointer-events: auto; /* 恢复编辑按钮的点击 */ }
+        
+        .tag-text { font-size: 0.8rem; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .edit-btn { float: right; color: #cbd5e1; cursor: pointer; font-size: 0.9rem; padding: 5px; }
+        .edit-area { display: none; margin-top: 5px; }
+        .edit-area input { width: 100%; padding: 4px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.8rem; }
+        
+        .badge { position: absolute; top: 8px; left: 8px; padding: 3px 6px; border-radius: 6px; font-size: 0.7rem; color: white; font-weight: bold; z-index: 2; backdrop-filter: blur(2px); }
+        .badge-manual { background: rgba(59, 130, 246, 0.85); }
+        .badge-auto { background: rgba(249, 115, 22, 0.85); }
 
-        /* 设置弹窗样式 */
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 25px; color: #64748b; font-size: 0.9rem; }
+        .page-btn { background: white; width: 40px; height: 40px; border-radius: 50%; border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.05); cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--text); }
+        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .upload-panel { position: fixed; bottom: 0; left: 0; right: 0; background: white; padding: 20px; border-radius: 20px 20px 0 0; box-shadow: 0 -5px 20px rgba(0,0,0,0.1); z-index: 100; transform: translateY(100%); transition: transform 0.3s; }
+        .upload-panel.show { transform: translateY(0); }
+        
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; justify-content: center; align-items: center; }
-        .modal { background: white; padding: 20px; border-radius: 12px; width: 300px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-        .modal h2 { margin-top: 0; font-size: 1.2rem; color: #1e293b; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; font-size: 0.9rem; color: #64748b; margin-bottom: 5px; }
-        .form-group input { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        .modal { background: white; padding: 20px; border-radius: 12px; width: 85%; max-width: 320px; }
+        .form-row { margin-bottom: 15px; }
+        .form-row label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #64748b; }
+        .form-row input { width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 8px; }
+        
+        .check-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.4); display: none; z-index: 5; pointer-events: none; }
+        .selection-mode .check-overlay { display: block; }
+        .check-mark { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; background: white; border: 2px solid #cbd5e1; border-radius: 50%; z-index: 6; display: none; align-items: center; justify-content: center; font-size: 12px; color: white; pointer-events: none; }
+        .selection-mode .check-mark { display: flex; }
+        .card.selected .check-mark { background: var(--primary); border-color: var(--primary); }
     </style>
 </head>
 <body>
-    <div class="header-actions">
-        <h1>🤍 机的表情包档案</h1>
-        <div>
-            <button class="btn btn-settings" onclick="openSettings()">⚙️ 设置</button>
-            <a href="/backup" class="btn btn-backup">📥 备份</a>
-        </div>
-    </div>
-    
-    <div class="controls">
-        <button class="btn filter-btn active" onclick="setFilter('all')">全部</button>
-        <button class="btn filter-btn" onclick="setFilter('manual')">我传的</button>
-        <button class="btn filter-btn" onclick="setFilter('auto')">机的小垃圾</button>
-        <button class="btn" style="background:#10b981; color:white;" onclick="toggleUpload()">➕ 上传</button>
-        <button class="btn" style="background:#f59e0b; color:white;" onclick="toggleSelectMode()" id="manageBtn">✅ 管理</button>
-        <button class="btn btn-del-batch" id="batchDelBtn" onclick="deleteBatch()">🗑️ 删除选中</button>
-    </div>
 
-    <!-- 设置弹窗 -->
-    <div class="modal-overlay" id="settingsModal">
-        <div class="modal">
-            <h2>⚙️ 插件设置</h2>
-            <div class="form-group">
-                <label>捡垃圾冷却 (秒)</label>
-                <input type="number" id="conf_cooldown">
-            </div>
-            <div class="form-group">
-                <label>发图概率 (0-100%)</label>
-                <input type="number" id="conf_prob">
-            </div>
-            <div class="form-group">
-                <label>每小时限额 (张)</label>
-                <input type="number" id="conf_limit">
-            </div>
-            <div class="modal-actions">
-                <button class="btn" style="background:#cbd5e1" onclick="closeSettings()">取消</button>
-                <button class="btn" style="background:var(--primary); color:white" onclick="saveSettings()">💾 保存</button>
-            </div>
+    <div class="header">
+        <h1>🤍 机的档案</h1>
+        <div class="header-icons">
+            <div class="icon-btn" onclick="openSettings()">⚙️</div>
+            <a href="/backup" class="icon-btn">📥</a>
         </div>
     </div>
 
-    <div class="upload-section" id="uploadBox">
-        <input type="file" id="fileInput" accept="image/*" multiple style="width:100%; padding:10px; border:2px dashed #cbd5e1; border-radius:8px;">
-        <input type="text" id="globalTagInput" placeholder="统一标签 (如: 搞怪)" style="width:100%; padding:10px; margin-top:10px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box">
-        <button class="btn btn-upload-big" onclick="batchUpload()">🚀 开始上传</button>
-        <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
-        <p id="uploadStatus" style="text-align:center; font-size:12px; color:#64748b; margin-top:5px;"></p>
+    <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="搜标签 (如: 搞怪)..." oninput="handleSearch()">
+    </div>
+
+    <div class="controls-scroll">
+        <button class="btn active" onclick="setFilter('all', this)">全部</button>
+        <button class="btn" onclick="setFilter('manual', this)">我传的</button>
+        <button class="btn" onclick="setFilter('auto', this)">机捡的</button>
+        <div style="width: 10px; flex-shrink: 0;"></div>
+        <button class="btn btn-action" onclick="toggleUpload()">➕ 上传</button>
+        <button class="btn btn-manage" onclick="toggleSelectMode()" id="manageBtn">✅ 管理</button>
+        <button class="btn btn-delete" id="batchDelBtn" onclick="deleteBatch()">🗑️ 删除</button>
     </div>
 
     <div class="gallery" id="gallery"></div>
 
+    <div class="pagination" id="pagination">
+        <button class="page-btn" onclick="changePage(-1)">❮</button>
+        <span id="pageInfo">1 / 1</span>
+        <button class="page-btn" onclick="changePage(1)">❯</button>
+    </div>
+
+    <div class="upload-panel" id="uploadBox">
+        <h3 style="margin-top:0">上传新图</h3>
+        <input type="file" id="fileInput" accept="image/*" multiple style="width:100%; margin-bottom:10px;">
+        <input type="text" id="globalTagInput" placeholder="统一标签 (选填)" style="width:100%; padding:10px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:10px; box-sizing: border-box;">
+        <button class="btn btn-action" style="width:100%; padding:12px;" onclick="batchUpload()">🚀 开始上传</button>
+        <div style="text-align:center; margin-top:10px; color:#94a3b8" onclick="toggleUpload()">关闭</div>
+        <div id="uploadStatus" style="text-align:center; font-size:12px; margin-top:5px; color:#64748b;"></div>
+    </div>
+
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal">
+            <h3 style="margin-top:0">⚙️ 插件设置</h3>
+            <div class="form-row"><label>发图概率 (%)</label><input type="number" id="conf_prob"></div>
+            <div class="form-row"><label>冷却时间 (秒)</label><input type="number" id="conf_cooldown"></div>
+            <div class="form-row"><label>每小时限额</label><input type="number" id="conf_limit"></div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button class="btn" onclick="closeSettings()">取消</button>
+                <button class="btn btn-action" onclick="saveSettings()">保存</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const rawData = {{MEME_DATA}}; 
-        let currentFilter = 'all';
-        let isSelectionMode = false;
-        let selectedFiles = new Set();
-        let currentConfig = {};
+        let appState = { filter: 'all', search: '', page: 1, pageSize: 20, selectionMode: false, selected: new Set(), filteredItems: [] };
+        let longPressTimer; // 长按定时器
+
+        function init() { processData(); render(); }
+
+        function processData() {
+            let items = Object.entries(rawData).reverse();
+            if (appState.filter !== 'all') items = items.filter(([_, info]) => (info.source || 'manual') === appState.filter);
+            if (appState.search) { const q = appState.search.toLowerCase(); items = items.filter(([_, info]) => (info.tags || "").toLowerCase().includes(q)); }
+            appState.filteredItems = items;
+            appState.page = 1;
+            updatePagination();
+        }
 
         function render() {
             const container = document.getElementById('gallery');
             container.innerHTML = '';
-            const items = Object.entries(rawData).reverse();
-            for (const [filename, info] of items) {
-                const tags = info.tags || "未分类"; 
+            const start = (appState.page - 1) * appState.pageSize;
+            const pageItems = appState.filteredItems.slice(start, start + appState.pageSize);
+
+            pageItems.forEach(([filename, info]) => {
+                const tags = info.tags || "未分类";
                 const source = info.source || 'manual';
-                if (currentFilter !== 'all' && source !== currentFilter) continue;
-                const isSel = selectedFiles.has(filename);
+                const isSel = appState.selected.has(filename);
+                
                 const div = document.createElement('div');
                 div.className = `card ${isSel ? 'selected' : ''}`;
-                div.onclick = (e) => handleCardClick(filename, e);
+                
+                // === 事件绑定 ===
+                // 点击事件
+                div.onclick = () => handleCardClick(filename);
+                
+                // 长按/右键事件 (0.6秒)
+                div.oncontextmenu = (e) => { e.preventDefault(); handleLongPress(filename); };
+                div.ontouchstart = (e) => { 
+                    longPressTimer = setTimeout(() => handleLongPress(filename), 600); 
+                };
+                div.ontouchend = () => clearTimeout(longPressTimer);
+                div.ontouchmove = () => clearTimeout(longPressTimer); // 滑动时取消长按
+                
                 div.innerHTML = `
                     <div class="badge ${source==='auto'?'badge-auto':'badge-manual'}">${source==='auto'?'AI':'我'}</div>
-                    <div class="select-mask"></div>
-                    <div class="check-icon">✓</div>
-                    <a href="/images/${filename}" target="_blank"><img src="/images/${filename}" loading="lazy"></a>
+                    <div class="check-overlay"></div>
+                    <div class="check-mark">✓</div>
+                    <img src="/images/${filename}" loading="lazy">
                     <div class="card-body">
-                        <div class="tag-display" id="disp-${filename}">
-                            <span>🏷️ ${tags}</span>
-                            <span class="edit-icon" onclick="showEdit('${filename}', event)">✏️</span>
+                        <div id="disp-${filename}">
+                            <div class="tag-text">${tags}</div>
+                            <span class="edit-btn" onclick="showEdit('${filename}', event)">✎</span>
                         </div>
-                        <div class="tag-edit-area" id="edit-${filename}" onclick="event.stopPropagation()">
-                            <input type="text" value="${tags}" id="input-${filename}">
-                            <button class="btn" style="background:#6366f1; color:white; width:100%; padding:4px;" onclick="saveTag('${filename}')">保存</button>
+                        <div class="edit-area" id="edit-${filename}" onclick="event.stopPropagation()">
+                            <input type="text" value="${tags}" id="input-${filename}" onkeydown="if(event.key==='Enter') saveTag('${filename}')">
                         </div>
                     </div>
                 `;
                 container.appendChild(div);
-            }
-            updateBatchBtn();
-        }
-
-        // === 设置逻辑 ===
-        async function openSettings() {
-            // 获取当前配置
-            const res = await fetch('/get_config');
-            currentConfig = await res.json();
-            document.getElementById('conf_cooldown').value = currentConfig.pick_cooldown;
-            document.getElementById('conf_prob').value = currentConfig.reply_prob;
-            document.getElementById('conf_limit').value = currentConfig.max_per_hour;
-            document.getElementById('settingsModal').style.display = 'flex';
-        }
-
-        function closeSettings() {
-            document.getElementById('settingsModal').style.display = 'none';
-        }
-
-        async function saveSettings() {
-            const newConf = {
-                pick_cooldown: parseInt(document.getElementById('conf_cooldown').value),
-                reply_prob: parseInt(document.getElementById('conf_prob').value),
-                max_per_hour: parseInt(document.getElementById('conf_limit').value)
-            };
-            const res = await fetch('/update_config', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(newConf)
             });
-            if(res.ok) {
-                alert("设置已保存并生效！");
-                closeSettings();
-            } else alert("保存失败");
+            updatePagination();
+            updateUI();
         }
 
-        // === 其他原有逻辑 ===
+        // === 核心：长按删除 ===
+        function handleLongPress(filename) {
+            // 如果在管理模式下，长按不触发删除，只触发选择
+            if(appState.selectionMode) return;
+            
+            // 震动反馈 (如果设备支持)
+            if(navigator.vibrate) navigator.vibrate(50);
+            
+            if(confirm("🗑️ 确定要删除这张图吗？")) {
+                deleteSingle(filename);
+            }
+        }
+
+        async function deleteSingle(filename) {
+            await fetch('/delete', {method:'POST', body:JSON.stringify({filename})});
+            delete rawData[filename];
+            processData();
+            render();
+        }
+
+        function handleCardClick(filename) {
+            if (appState.selectionMode) {
+                if (appState.selected.has(filename)) appState.selected.delete(filename);
+                else appState.selected.add(filename);
+                render();
+                updateUI();
+            } else {
+                // 普通模式点击查看大图
+                window.open(`/images/${filename}`, '_blank');
+            }
+        }
+
+        // 其他逻辑保持不变
+        function setFilter(type, btn) {
+            appState.filter = type;
+            document.querySelectorAll('.controls-scroll .btn').forEach(b => { if(!b.classList.contains('btn-action') && !b.classList.contains('btn-manage')) b.classList.remove('active'); });
+            btn.classList.add('active');
+            processData(); render();
+        }
+        function handleSearch() { appState.search = document.getElementById('searchInput').value.trim(); processData(); render(); }
+        function changePage(delta) {
+            const max = Math.ceil(appState.filteredItems.length / appState.pageSize) || 1;
+            const next = appState.page + delta;
+            if (next >= 1 && next <= max) { appState.page = next; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+        }
+        function updatePagination() {
+            const max = Math.ceil(appState.filteredItems.length / appState.pageSize) || 1;
+            document.getElementById('pageInfo').innerText = `${appState.page} / ${max}`;
+            document.getElementById('pagination').style.display = appState.filteredItems.length === 0 ? 'none' : 'flex';
+        }
         function toggleSelectMode() {
-            isSelectionMode = !isSelectionMode;
-            document.body.classList.toggle('selection-mode', isSelectionMode);
-            document.getElementById('manageBtn').innerText = isSelectionMode ? '❌ 退出' : '✅ 管理';
-            selectedFiles.clear();
-            render();
+            appState.selectionMode = !appState.selectionMode;
+            document.body.classList.toggle('selection-mode', appState.selectionMode);
+            const btn = document.getElementById('manageBtn');
+            btn.innerText = appState.selectionMode ? '完成' : '✅ 管理';
+            btn.style.backgroundColor = appState.selectionMode ? '#64748b' : '#f59e0b';
+            if (!appState.selectionMode) appState.selected.clear();
+            render(); updateUI();
         }
-        function handleCardClick(filename, event) {
-            if(!isSelectionMode) return;
-            if(selectedFiles.has(filename)) selectedFiles.delete(filename);
-            else selectedFiles.add(filename);
-            render();
-        }
-        async function deleteBatch() {
-            if(selectedFiles.size === 0) return;
-            if(!confirm(`确定删除选中的 ${selectedFiles.size} 张图吗？`)) return;
-            await fetch('/batch_delete', {method: 'POST', body: JSON.stringify({filenames: Array.from(selectedFiles)})});
-            for(let f of selectedFiles) delete rawData[f];
-            toggleSelectMode();
-        }
-        function updateBatchBtn() {
-            const btn = document.getElementById('batchDelBtn');
-            btn.style.display = (isSelectionMode && selectedFiles.size > 0) ? 'inline-flex' : 'none';
-            btn.innerText = `🗑️ 删除 (${selectedFiles.size})`;
+        function updateUI() {
+            const delBtn = document.getElementById('batchDelBtn');
+            delBtn.style.display = (appState.selectionMode && appState.selected.size > 0) ? 'inline-block' : 'none';
+            delBtn.innerText = `🗑️ 删 ${appState.selected.size} 张`;
         }
         function showEdit(filename, e) {
-            e.stopPropagation(); 
+            e.stopPropagation();
             document.getElementById(`disp-${filename}`).style.display = 'none';
             document.getElementById(`edit-${filename}`).style.display = 'block';
+            document.getElementById(`input-${filename}`).focus();
         }
         async function saveTag(filename) {
             const newTags = document.getElementById(`input-${filename}`).value;
-            const resp = await fetch('/update_tag', {method: 'POST', body: JSON.stringify({filename: filename, tags: newTags})});
-            if(resp.ok) { rawData[filename].tags = newTags; render(); } else alert("修改失败");
+            const res = await fetch('/update_tag', { method: 'POST', body: JSON.stringify({filename, tags: newTags}) });
+            if(res.ok) { rawData[filename].tags = newTags; document.getElementById(`disp-${filename}`).style.display = 'block'; document.getElementById(`edit-${filename}`).style.display = 'none'; processData(); render(); }
+        }
+        async function deleteBatch() {
+            if(!confirm(`确定删除这 ${appState.selected.size} 张图片吗？`)) return;
+            await fetch('/batch_delete', { method: 'POST', body: JSON.stringify({filenames: Array.from(appState.selected)}) });
+            appState.selected.forEach(f => delete rawData[f]);
+            appState.selected.clear(); toggleSelectMode(); processData(); render();
         }
         async function batchUpload() {
             const files = document.getElementById('fileInput').files;
-            const globalTag = document.getElementById('globalTagInput').value.trim() || "未分类";
+            const globalTag = document.getElementById('globalTagInput').value.trim();
             const status = document.getElementById('uploadStatus');
-            const fill = document.getElementById('progressFill');
-            document.getElementById('progressBar').style.display = 'block';
-            if(files.length === 0) return alert("请选图！");
-            let success = 0;
+            if(files.length === 0) return;
+            status.innerText = "上传中...";
             for(let i=0; i<files.length; i++) {
-                const fd = new FormData();
-                fd.append('file', files[i]);
-                fd.append('tags', globalTag);
-                try { status.innerText = `正在上传 ${i+1}/${files.length}`; await fetch('/upload', {method: 'POST', body: fd}); success++; } catch(e){}
-                fill.style.width = `${((i+1)/files.length)*100}%`;
+                const fd = new FormData(); fd.append('file', files[i]); fd.append('tags', globalTag || "未分类");
+                try { await fetch('/upload', {method: 'POST', body: fd}); } catch(e){}
+                status.innerText = `进度: ${i+1}/${files.length}`;
             }
-            status.innerText = `✅ 完成 ${success} 张`;
-            setTimeout(() => location.reload(), 1000);
-        }
-        function setFilter(type) {
-            currentFilter = type;
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
-            render();
+            status.innerText = "上传完成，即将刷新"; setTimeout(() => location.reload(), 1000);
         }
         function toggleUpload() { document.getElementById('uploadBox').classList.toggle('show'); }
-        render();
+        async function openSettings() {
+            const res = await fetch('/get_config'); const conf = await res.json();
+            document.getElementById('conf_prob').value = conf.reply_prob; document.getElementById('conf_cooldown').value = conf.pick_cooldown; document.getElementById('conf_limit').value = conf.max_per_hour;
+            document.getElementById('settingsModal').style.display = 'flex';
+        }
+        function closeSettings() { document.getElementById('settingsModal').style.display = 'none'; }
+        async function saveSettings() {
+            const conf = { reply_prob: parseInt(document.getElementById('conf_prob').value), pick_cooldown: parseInt(document.getElementById('conf_cooldown').value), max_per_hour: parseInt(document.getElementById('conf_limit').value) };
+            await fetch('/update_config', {method:'POST', body:JSON.stringify(conf)}); alert("保存成功"); closeSettings();
+        }
+        init();
     </script>
 </body>
 </html>
