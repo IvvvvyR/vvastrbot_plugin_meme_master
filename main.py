@@ -172,8 +172,9 @@ class MemeMaster(Star):
         return f"系统提示：已发图 [{selected_file}]"
 
     # ================= 捡垃圾 =================
-    @event_message_type(MessageType.GROUP_MESSAGE, MessageType.FRIEND_MESSAGE)
-    async def on_message(self, event: AstrMessageEvent):
+    @event_message_type(MessageType.GROUP_MESSAGE)
+@event_message_type(MessageType.FRIEND_MESSAGE)
+async def on_message(self, event: AstrMessageEvent):
         msg = event.message_str
         trigger_words = ["记住", "存图", "收录"]
         found_trigger = next((w for w in trigger_words if w in msg), None)
@@ -224,7 +225,7 @@ class MemeMaster(Star):
             
             if completion.startswith("YES"):
                 tags = completion.split("|")[-1].strip()
-                self.context.logger.info(f"👀 [AI捡垃圾] 存入: {tags}")
+                self.context.logger.info(f"🖤 [ta捡的小垃圾们] 存入: {tags}")
                 await self.save_image_bytes(content, tags, "auto", None, img_hash)
         except: pass
 
