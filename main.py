@@ -12,7 +12,7 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api.event import filter
 from astrbot.api.event.filter import EventMessageType
 from astrbot.core.platform import AstrMessageEvent
-# 【修改点1】这里去掉了 MessageChain，只留基础的
+# 【修正1】只引入最基础的组件，确保兼容所有版本
 from astrbot.core.message.components import Image, Plain
 
 @register("vv_meme_master", "MemeMaster", "GalleryStyle", "15.1.0")
@@ -32,6 +32,7 @@ class MemeMaster(Star):
         self.local_config = self.load_config()
         self.data = self.load_data()
 
+        # 启动网页后台
         try:
             asyncio.create_task(self.start_web_server())
         except Exception as e:
@@ -45,6 +46,7 @@ class MemeMaster(Star):
         img_url = self._get_img_url(event)
         
         # --- 分支 A：用户发图 (尝试自动进货) ---
+        # 如果是图片，且不是在用存图命令，就跑去鉴赏
         if img_url and "/存图" not in event.message_str:
             cooldown = self.local_config.get("auto_save_cooldown", 60)
             if time.time() - self.last_auto_save_time > cooldown:
@@ -53,6 +55,7 @@ class MemeMaster(Star):
 
         # --- 分支 B：用户发文字 (准备发图) ---
         if not img_url:
+            # 概率控制
             prob = self.local_config.get("reply_prob", 100)
             if random.randint(1, 100) > prob:
                 return 
@@ -61,10 +64,11 @@ class MemeMaster(Star):
             if not descriptions:
                 return
             
-            # 随机抽 50 个给 AI 看
+            # 随机抽 50 个给 AI 看，省 Token
             display_list = descriptions if len(descriptions) <= 50 else random.sample(descriptions, 50)
             menu_text = "、".join(display_list)
             
+            # 注入小抄
             system_injection = f"\n\n[System Hint]\nAvailable Memes: [{menu_text}]\nUse 'MEME_TAG: content' to send."
             event.message_str += system_injection
 
@@ -82,13 +86,14 @@ class MemeMaster(Star):
             try:
                 parts = text.split("MEME_TAG:")
                 chat_content = parts[0].strip()
+                # 提取 AI 选的标签描述
                 selected_desc = parts[1].strip().split('\n')[0]
                 
                 img_path = self.find_best_match(selected_desc)
                 
                 if img_path:
                     print(f"🎯 AI发图: {selected_desc}")
-                    # 【修改点2】直接给列表，不打包成 MessageChain 了
+                    # 【修正2】直接传列表，不要用 MessageChain
                     chain = [Plain(chat_content + "\n"), Image.fromFileSystem(img_path)]
                     event.set_result(chain)
                 else:
@@ -152,26 +157,47 @@ YES
         if not os.path.exists(p):
             return web.Response(text="index missing", status=404)
         with open(p, "r", encoding="utf-8") as f:
+            # 渲染模板，兼容 HTML 中的 {{MEME_DATA}}
             return web.Response(text=f.read().replace("{{MEME_DATA}}", json.dumps(self.data)), content_type="text/html")
 
+    # 【修正3】坚如磐石的上传逻辑
     async def handle_upload(self, r):
         try:
             reader = await r.multipart()
+            
+            # 临时变量
+            file_data = None
+            filename = None
+            tags_text = "未分类"
+
+            # 循环读取所有部分
             while True:
                 part = await reader.next()
                 if part is None:
                     break
+                
                 if part.name == "file":
-                    fn = part.filename
-                    fd = await part.read()
-                    if fd:
-                        if os.path.exists(os.path.join(self.img_dir, fn)):
-                            fn = f"{int(time.time())}_{fn}"
-                        with open(os.path.join(self.img_dir, fn), "wb") as f:
-                            f.write(fd)
-                        self.data[fn] = {"tags": "网页上传", "source": "manual"}
-                        self.save_data()
-            return web.Response(text="ok")
+                    filename = part.filename
+                    file_data = await part.read()
+                elif part.name == "tags":
+                    # 确保读到文字
+                    val = await part.text()
+                    if val and val.strip():
+                        tags_text = val.strip()
+
+            # 全部读完再保存，确保标签不会丢失
+            if file_data and filename:
+                if os.path.exists(os.path.join(self.img_dir, filename)):
+                    filename = f"{int(time.time())}_{filename}"
+                
+                with open(os.path.join(self.img_dir, filename), "wb") as f:
+                    f.write(file_data)
+                
+                self.data[filename] = {"tags": tags_text, "source": "manual"}
+                self.save_data()
+                return web.Response(text="ok")
+            
+            return web.Response(text="missing file", status=400)
         except:
             return web.Response(text="error")
 
@@ -229,12 +255,15 @@ YES
         best_ratio = 0.0
         for filename, info in self.data.items():
             tags = info.get("tags", "")
+            # 使用模糊匹配算法
             ratio = difflib.SequenceMatcher(None, query, tags).ratio()
             if query in tags:
                 ratio += 0.5
             if ratio > best_ratio:
                 best_ratio = ratio
                 best_file = filename
+        
+        # 只要有一点相似度就发
         if best_ratio > 0.1 and best_file:
             return os.path.join(self.img_dir, best_file)
         return None
