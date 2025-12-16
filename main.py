@@ -1,3 +1,4 @@
+print("🔥 vv_meme_master main.py imported")
 import os
 import json
 import asyncio
