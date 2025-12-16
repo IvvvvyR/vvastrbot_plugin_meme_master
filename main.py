@@ -11,7 +11,7 @@ from aiohttp import web
 from astrbot.api.all import *
 from astrbot.api.message_components import Image, Plain
 
-@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+备份", "9.0.0")
+@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+备份", "9.1.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -35,9 +35,22 @@ class MemeMaster(Star):
             {"name": "max_per_hour", "type": "int", "default": 20, "description": "限额"}
         ]
 
+    # 修复点1：加载数据时，自动把旧格式转成新格式
     def load_data(self):
         if not os.path.exists(self.data_file): return {}
-        with open(self.data_file, "r", encoding="utf-8") as f: return json.load(f)
+        try:
+            with open(self.data_file, "r", encoding="utf-8") as f:
+                raw_data = json.load(f)
+                new_data = {}
+                for k, v in raw_data.items():
+                    # 如果是旧数据(字符串)，转为字典
+                    if isinstance(v, str):
+                        new_data[k] = {"tags": v, "source": "manual", "hash": ""}
+                    else:
+                        new_data[k] = v
+                return new_data
+        except:
+            return {}
 
     def save_data(self):
         with open(self.data_file, "w", encoding="utf-8") as f:
@@ -49,6 +62,7 @@ class MemeMaster(Star):
     def is_duplicate(self, img_hash: str) -> bool:
         if not img_hash: return False
         for info in self.data.values():
+            # 加了类型判断，防止报错
             if isinstance(info, dict) and info.get("hash") == img_hash: return True
         return False
 
@@ -58,7 +72,7 @@ class MemeMaster(Star):
         app.router.add_get('/', self.handle_index)
         app.router.add_post('/upload', self.handle_upload)
         app.router.add_post('/delete', self.handle_delete)
-        app.router.add_post('/update_tag', self.handle_update_tag) # 新增：修改标签接口
+        app.router.add_post('/update_tag', self.handle_update_tag)
         app.router.add_get('/backup', self.handle_backup)
         app.router.add_static('/images/', path=self.img_dir, name='images')
         runner = web.AppRunner(app)
@@ -85,16 +99,26 @@ class MemeMaster(Star):
         buffer.seek(0)
         return web.Response(body=buffer, headers={'Content-Disposition': f'attachment; filename="meme_backup_{int(time.time())}.zip"', 'Content-Type': 'application/zip'})
 
-    # 新增：处理标签修改
+    # 修复点2：修改标签接口加了强力保险
     async def handle_update_tag(self, request):
-        data = await request.json()
-        filename = data.get("filename")
-        new_tags = data.get("tags")
-        if filename in self.data:
-            self.data[filename]["tags"] = new_tags
-            self.save_data()
-            return web.Response(text="ok")
-        return web.Response(text="fail", status=404)
+        try:
+            data = await request.json()
+            filename = data.get("filename")
+            new_tags = data.get("tags")
+            
+            if filename in self.data:
+                # 如果内存里还是旧格式（字符串），先转成字典
+                if isinstance(self.data[filename], str):
+                    self.data[filename] = {"tags": self.data[filename], "source": "manual", "hash": ""}
+                
+                # 现在肯定是字典了，可以安全修改了
+                self.data[filename]["tags"] = new_tags
+                self.save_data()
+                return web.Response(text="ok")
+            return web.Response(text="fail", status=404)
+        except Exception as e:
+            self.context.logger.error(f"修改标签失败: {e}")
+            return web.Response(text=str(e), status=500)
 
     async def handle_upload(self, request):
         reader = await request.multipart()
@@ -111,7 +135,6 @@ class MemeMaster(Star):
                 filename = f"{int(time.time())}_{filename}"
             with open(os.path.join(self.img_dir, filename), 'wb') as f: f.write(file_content)
             
-            # 读取标签，如果没有传标签，默认叫“未分类”
             tags = "未分类"
             try:
                 tags_field = await reader.next()
