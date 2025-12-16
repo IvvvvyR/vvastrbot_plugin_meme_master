@@ -8,12 +8,11 @@ import zipfile
 import io
 import aiohttp
 from aiohttp import web
+
+# 只需要这一行，里面包含了所有我们需要的东西
 from astrbot.api.all import *
 
-# 显式导入 EventMessageType 以避免混淆
-from astrbot.api.event import EventMessageType
-
-@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+修复版", "12.7.0")
+@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+最终修复", "12.8.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -32,7 +31,7 @@ class MemeMaster(Star):
         self.data = self.load_data()
         self.local_config = self.load_config()
         
-        print(f"🔍 [MemeMaster] v12.7 加载完毕，图片数: {len(self.data)}")
+        print(f"🔍 [MemeMaster] v12.8 加载完毕，图片数: {len(self.data)}")
         
         asyncio.create_task(self.start_web_server())
 
@@ -202,15 +201,22 @@ class MemeMaster(Star):
         return f"系统提示：已发图 [{selected_file}]"
 
     # =========================================================
-    # 关键修复区：使用 EventMessageType 而不是 MessageType
+    # 修复核心：监听所有消息，不使用易报错的过滤器
     # =========================================================
     
-    @event_message_type(EventMessageType.GROUP_MESSAGE)
-    async def on_group_message(self, event: AstrMessageEvent):
-        await self._process_message(event)
-
-    @event_message_type(EventMessageType.PRIVATE_MESSAGE)
-    async def on_friend_message(self, event: AstrMessageEvent):
+    @event_message_type(EventMessageType.ALL)
+    async def on_message(self, event: AstrMessageEvent):
+        # 兼容性处理：不同版本的 API 路径可能不同
+        # 确保只处理群聊和私聊
+        msg_obj = event.message_obj
+        
+        # 检查是否是群聊或私聊
+        is_valid = False
+        if hasattr(msg_obj, "group_id") and msg_obj.group_id: is_valid = True # 群聊
+        elif hasattr(msg_obj, "user_id") and msg_obj.user_id: is_valid = True # 私聊
+        
+        if not is_valid: return
+        
         await self._process_message(event)
 
     # 统一处理逻辑
@@ -276,4 +282,4 @@ class MemeMaster(Star):
             self.save_data()
             if source == "manual" and event:
                 print(f"✅ 手动收录: {tags}")
-        except: pass
+        except: pass0
