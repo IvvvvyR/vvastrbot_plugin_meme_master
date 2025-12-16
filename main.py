@@ -12,9 +12,10 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api.event import filter
 from astrbot.api.event.filter import EventMessageType
 from astrbot.core.platform import AstrMessageEvent
-from astrbot.core.message.components import Image, Plain, MessageChain
+# 【修改点1】这里去掉了 MessageChain，只留基础的
+from astrbot.core.message.components import Image, Plain
 
-@register("vv_meme_master", "MemeMaster", "表情包标签匹配+存图", "15.1.0")
+@register("vv_meme_master", "MemeMaster", "GalleryStyle", "15.1.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -87,10 +88,11 @@ class MemeMaster(Star):
                 
                 if img_path:
                     print(f"🎯 AI发图: {selected_desc}")
+                    # 【修改点2】直接给列表，不打包成 MessageChain 了
                     chain = [Plain(chat_content + "\n"), Image.fromFileSystem(img_path)]
-                    event.set_result(MessageChain(chain))
+                    event.set_result(chain)
                 else:
-                    event.set_result(MessageChain([Plain(chat_content)]))
+                    event.set_result([Plain(chat_content)])
             except:
                 pass
 
