@@ -9,9 +9,11 @@ import io
 import aiohttp
 from aiohttp import web
 from astrbot.api.all import *
-from astrbot.api.message_components import Image, Plain
 
-@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+修复版", "12.6.0")
+# 显式导入 EventMessageType 以避免混淆
+from astrbot.api.event import EventMessageType
+
+@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+修复版", "12.7.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -30,8 +32,7 @@ class MemeMaster(Star):
         self.data = self.load_data()
         self.local_config = self.load_config()
         
-        # 🔧 修复点：直接用 print，防止 context.logger 报错
-        print(f"🔍 [MemeMaster] v12.6 加载完毕，图片数: {len(self.data)}")
+        print(f"🔍 [MemeMaster] v12.7 加载完毕，图片数: {len(self.data)}")
         
         asyncio.create_task(self.start_web_server())
 
@@ -200,13 +201,15 @@ class MemeMaster(Star):
         self.sent_count_hour += 1
         return f"系统提示：已发图 [{selected_file}]"
 
-    # === 分流处理，规避装饰器冲突 ===
+    # =========================================================
+    # 关键修复区：使用 EventMessageType 而不是 MessageType
+    # =========================================================
     
-    @event_message_type(MessageType.GROUP_MESSAGE)
+    @event_message_type(EventMessageType.GROUP_MESSAGE)
     async def on_group_message(self, event: AstrMessageEvent):
         await self._process_message(event)
 
-    @event_message_type(MessageType.FRIEND_MESSAGE)
+    @event_message_type(EventMessageType.PRIVATE_MESSAGE)
     async def on_friend_message(self, event: AstrMessageEvent):
         await self._process_message(event)
 
@@ -215,6 +218,7 @@ class MemeMaster(Star):
         msg = event.message_str
         
         img_url = None
+        # 兼容性获取图片URL
         if hasattr(event.message_obj, "message"):
             for comp in event.message_obj.message:
                 if isinstance(comp, Image): img_url = comp.url; break
