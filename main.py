@@ -13,10 +13,10 @@ from astrbot.api.message_components import Image, Plain
 
 @register("meme_master", "表情包大脑", "图床+捡垃圾+备份", "7.0.0")
 class MemeMaster(Star):
-    def __init__(self, context: Context, config: dict):
+    def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
-        self.config = config
-        self.base_dir = os.path.dirname(__file__)
+        self.config = config if config is not None else {}
+        self.base_dir = os.path.dirname(__file___)
         self.img_dir = os.path.join(self.base_dir, "images")
         self.data_file = os.path.join(self.base_dir, "memes.json")
         
