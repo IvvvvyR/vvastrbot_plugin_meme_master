@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 表情包大脑</title>
+    <style>
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; padding: 20px; max-width: 1200px; margin: 0 auto; color: #333; }
+        h1 { text-align: center; margin-bottom: 20px; }
+        
+        .header-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .backup-btn { background: #805ad5; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; border: none; cursor: pointer; display: inline-flex; align-items: center; }
+        .backup-btn:hover { background: #6b46c1; }
+        
+        .controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
+        .filter-btn { padding: 8px 20px; border: none; border-radius: 20px; cursor: pointer; background: #e2e8f0; color: #4a5568; }
+        .filter-btn.active { background: #4299e1; color: white; }
+
+        .upload-section { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; display: none; text-align: center; }
+        .upload-section.show { display: block; }
+        
+        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 15px; }
+        .card { background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); position: relative; }
+        .card img { width: 100%; height: 150px; object-fit: cover; }
+        .card-body { padding: 10px; font-size: 12px; }
+        .badge { position: absolute; top: 5px; left: 5px; padding: 2px 6px; border-radius: 4px; font-size: 10px; color: white; }
+        .badge-manual { background: #4299e1; }
+        .badge-auto { background: #ed8936; }
+        .delete-btn { position: absolute; top: 5px; right: 5px; background: rgba(0,0,0,0.5); color: white; border: none; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="header-actions">
+        <h1>🤖 AI 表情包大脑</h1>
+        <a href="/backup" class="backup-btn" target="_blank">📥 一键备份数据 (Zip)</a>
+    </div>
+    
+    <div class="controls">
+        <button class="filter-btn active" onclick="setFilter('all')">全部</button>
+        <button class="filter-btn" onclick="setFilter('manual')">我上传的</button>
+        <button class="filter-btn" onclick="setFilter('auto')">AI捡来的</button>
+        <button class="filter-btn" onclick="toggleUpload()" style="background:#48bb78; color:white">➕ 上传</button>
+    </div>
+
+    <div class="upload-section" id="uploadBox">
+        <input type="file" id="fileInput" accept="image/*">
+        <input type="text" id="tagInput" placeholder="输入标签..." style="padding: 5px;">
+        <button onclick="uploadFile()">确定上传</button>
+    </div>
+
+    <div class="gallery" id="gallery"></div>
+
+    <script>
+        const rawData = {{MEME_DATA}}; 
+        let currentFilter = 'all';
+
+        function render() {
+            const container = document.getElementById('gallery');
+            container.innerHTML = '';
+            const items = Object.entries(rawData).reverse();
+
+            for (const [filename, info] of items) {
+                const tags = info.tags || info; 
+                const source = info.source || 'manual';
+                if (currentFilter !== 'all' && source !== currentFilter) continue;
+
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.innerHTML = `
+                    <div class="badge ${source==='auto'?'badge-auto':'badge-manual'}">${source==='auto'?'AI':'我'}</div>
+                    <button class="delete-btn" onclick="deleteMeme('${filename}')">×</button>
+                    <a href="/images/${filename}" target="_blank"><img src="/images/${filename}" loading="lazy"></a>
+                    <div class="card-body">🏷️ ${tags}</div>
+                `;
+                container.appendChild(div);
+            }
+        }
+        function setFilter(type) {
+            currentFilter = type;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            render();
+        }
+        function toggleUpload() { document.getElementById('uploadBox').classList.toggle('show'); }
+        async function uploadFile() {
+            const file = document.getElementById('fileInput').files[0];
+            const tags = document.getElementById('tagInput').value;
+            if(!file || !tags) return alert("请完善信息");
+            const fd = new FormData(); fd.append('file', file); fd.append('tags', tags);
+            await fetch('/upload', {method:'POST', body:fd});
+            location.reload();
+        }
+        async function deleteMeme(f) {
+            if(confirm("删除?")) {
+                await fetch('/delete', {method:'POST', body:JSON.stringify({filename:f})});
+                delete rawData[f]; render();
+            }
+        }
+        render();
+    </script>
+</body>
+</html>
