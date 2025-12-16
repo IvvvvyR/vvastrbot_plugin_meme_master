@@ -356,9 +356,17 @@
                 const zip = await JSZip.loadAsync(file);
                 
                 // 检查备份文件结构
-                if(!zip.files['memes.json'] || !zip.files['images/']) {
-                    throw new Error('备份文件格式不正确');
-                }
+                if (!zip.files['memes.json']) {
+    throw new Error('未找到 memes.json');
+}
+
+const hasImages = Object.keys(zip.files).some(name =>
+    name.startsWith('images/') && !name.endsWith('/')
+);
+
+if (!hasImages) {
+    throw new Error('未找到 images 目录下的图片文件');
+}
 
                 fill.style.width = '30%';
                 status.innerText = '正在读取数据...';
