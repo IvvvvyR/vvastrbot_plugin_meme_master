@@ -11,7 +11,7 @@ from aiohttp import web
 from astrbot.api.all import *
 from astrbot.api.message_components import Image, Plain
 
-@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+日志侦探", "12.3.0")
+@register("vv_meme_master", "MemeMaster", "Web管理+智能图库+修复版", "12.4.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -30,8 +30,8 @@ class MemeMaster(Star):
         self.data = self.load_data()
         self.local_config = self.load_config()
         
-        # 🚩 探针1：启动确认
-        self.context.logger.info(f"🔍 [MemeMaster] 插件 v12.3 正在初始化... 图片数量: {len(self.data)}")
+        # 启动日志
+        self.context.logger.info(f"🔍 [MemeMaster] v12.4 加载完毕")
         asyncio.create_task(self.start_web_server())
 
     def load_config(self):
@@ -91,9 +91,8 @@ class MemeMaster(Star):
         try:
             site = web.TCPSite(runner, "0.0.0.0", port)
             await site.start()
-            self.context.logger.info(f"✅ [MemeMaster] Web后台启动成功: 端口 {port}")
-        except Exception as e:
-            self.context.logger.error(f"❌ Web启动失败: {e}")
+            self.context.logger.info(f"✅ [MemeMaster] 后台启动成功: 端口 {port}")
+        except: pass
 
     async def handle_index(self, request):
         html_path = os.path.join(self.base_dir, "index.html")
@@ -174,25 +173,18 @@ class MemeMaster(Star):
             return web.Response(text="ok")
         return web.Response(text="fail", status=404)
 
-    # 🚩 探针2：LLM 工具调用
     @llm_tool(name="express_emotion_with_image")
     async def express_emotion_with_image(self, emotion: str):
-        """想用图片表达情绪或玩梗时调用。主动使用，不要等用户要求。Args: emotion (str): 情绪或意图"""
         self.context.logger.info(f"🔍 [MemeMaster] LLM尝试调用发图工具: {emotion}")
-        
         if time.time() - self.last_sent_reset > 3600:
             self.sent_count_hour = 0
             self.last_sent_reset = time.time()
         
         limit = self.local_config.get("max_per_hour", 20)
-        if self.sent_count_hour >= limit:
-            self.context.logger.info("🚫 [MemeMaster] 触发限额，拦截发图")
-            return f"系统提示：每小时发图上限已达({limit}张)。"
+        if self.sent_count_hour >= limit: return f"系统提示：每小时发图上限已达({limit}张)。"
         
         prob = self.local_config.get("reply_prob", 80)
-        if random.randint(1, 100) > prob:
-            self.context.logger.info("🎲 [MemeMaster] 概率判定未通过，不发图")
-            return "系统提示：判定不用发图。"
+        if random.randint(1, 100) > prob: return "系统提示：判定不用发图。"
 
         results = []
         for filename, info in self.data.items():
@@ -200,31 +192,19 @@ class MemeMaster(Star):
             if emotion in tags or any(k in emotion for k in tags.split()):
                 results.append(filename)
         
-        if not results:
-            self.context.logger.info(f"⚠️ [MemeMaster] 没找到关于 '{emotion}' 的图")
-            return f"系统提示：无 '{emotion}' 相关图片。"
-
+        if not results: return f"系统提示：无 '{emotion}' 相关图片。"
         selected_file = random.choice(results)
         file_path = os.path.join(self.img_dir, selected_file)
-        
         self.context.logger.info(f"📤 [MemeMaster] 发送图片: {selected_file}")
         await self.context.send_message(self.context.get_event_queue().get_nowait(), [Image.fromFileSystem(file_path)])
         self.sent_count_hour += 1
         return f"系统提示：已发图 [{selected_file}]"
 
-    # 🚩 探针3：消息监听
-    @event_message_type(EventMessageType.ALL)
+    # 🛑 修复点：不再用 ALL，而是分别注册两个！
+    @event_message_type(MessageType.GROUP_MESSAGE)
+    @event_message_type(MessageType.FRIEND_MESSAGE)
     async def on_message(self, event: AstrMessageEvent):
-        # 宽容模式：只要有 message_obj 就先放进来看看
-        if not event.message_obj: return
-        
-        # 调试日志：看看收到了什么类型的消息
-        # self.context.logger.info(f"🔍 [MemeMaster] 监听到消息类型: {event.message_obj.type}")
-
-        # 只处理群聊和私聊
-        if event.message_obj.type not in [MessageType.GROUP_MESSAGE, MessageType.FRIEND_MESSAGE]:
-            return
-
+        # 不需要再检查 type 了，因为装饰器已经帮我们筛选了
         msg = event.message_str
         
         # 兼容性获取图片 URL
@@ -236,26 +216,23 @@ class MemeMaster(Star):
              for comp in event.message_obj.message_chain:
                 if isinstance(comp, Image): img_url = comp.url; break
 
-        # 如果有图，走收录逻辑
-        if img_url:
-            self.context.logger.info("🔍 [MemeMaster] 收到图片，检查是否需要收录...")
-            trigger_words = ["记住", "存图", "收录"]
-            found_trigger = next((w for w in trigger_words if w in msg), None)
-            
-            if found_trigger:
-                tags = msg.replace(found_trigger, "").strip() or "未分类"
-                self.context.logger.info(f"🔍 [MemeMaster] 触发手动收录: {tags}")
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(img_url) as resp:
-                        if resp.status == 200:
-                            content = await resp.read()
-                            await self.save_image_bytes(content, tags, "manual", event)
-                return
-            
-            # 自动捡垃圾逻辑
-            cooldown = self.local_config.get("pick_cooldown", 30)
-            if time.time() - self.last_pick_time < cooldown: return
-            asyncio.create_task(self.ai_evaluate_image(img_url, context_text=msg))
+        if not img_url: return
+
+        trigger_words = ["记住", "存图", "收录"]
+        found_trigger = next((w for w in trigger_words if w in msg), None)
+        
+        if found_trigger:
+            tags = msg.replace(found_trigger, "").strip() or "未分类"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(img_url) as resp:
+                    if resp.status == 200:
+                        content = await resp.read()
+                        await self.save_image_bytes(content, tags, "manual", event)
+            return
+        
+        cooldown = self.local_config.get("pick_cooldown", 30)
+        if time.time() - self.last_pick_time < cooldown: return
+        asyncio.create_task(self.ai_evaluate_image(img_url, context_text=msg))
 
     async def ai_evaluate_image(self, img_url, context_text=""):
         try:
@@ -267,7 +244,6 @@ class MemeMaster(Star):
             img_hash = self.calculate_md5(content)
             if self.is_duplicate(img_hash): return 
             
-            self.context.logger.info("🔍 [MemeMaster] 正在请求 LLM 鉴图...")
             self.last_pick_time = time.time()
             prompt = f"""请审视这张图。配文:"{context_text}"。1.无意义->NO 2.有趣->YES|标签(10字内)"""
             handler = self.context.get_llm_handler()
@@ -278,10 +254,7 @@ class MemeMaster(Star):
                 tags = completion.split("|")[-1].strip()
                 self.context.logger.info(f"🖤 [机在捡垃圾] 存入: {tags}")
                 await self.save_image_bytes(content, tags, "auto", None, img_hash)
-            else:
-                self.context.logger.info("🔍 [MemeMaster] LLM 觉得这张图没意思")
-        except Exception as e:
-            self.context.logger.error(f"❌ [MemeMaster] 鉴图出错: {e}")
+        except: pass
 
     async def save_image_bytes(self, content, tags, source, event=None, precalc_hash=None):
         try:
