@@ -12,10 +12,10 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api.event import filter
 from astrbot.api.event.filter import EventMessageType
 from astrbot.core.platform import AstrMessageEvent
-# 只引入基础组件，不引入 MessageChain
+# 只引入基础组件，确保兼容
 from astrbot.core.message.components import Image, Plain
 
-@register("vv_meme_master", "MemeMaster", "GalleryStyle", "15.1.0")
+@register("vv_meme_master", "MemeMaster", "AI智能表情包", "15.1.0")
 class MemeMaster(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -49,7 +49,8 @@ class MemeMaster(Star):
         if img_url and "/存图" not in event.message_str:
             cooldown = self.local_config.get("auto_save_cooldown", 60)
             if time.time() - self.last_auto_save_time > cooldown:
-                asyncio.create_task(self.ai_evaluate_image(img_url))
+                # 【修改】这里把配文也传进去
+                asyncio.create_task(self.ai_evaluate_image(img_url, event.message_str))
             return
 
         # --- 文字发图逻辑 ---
@@ -62,16 +63,14 @@ class MemeMaster(Star):
             if not descriptions:
                 return
             
-            # 随机抽 50 个给 AI 看
             display_list = descriptions if len(descriptions) <= 50 else random.sample(descriptions, 50)
             menu_text = "、".join(display_list)
             
-            # 注入系统提示
             system_injection = f"\n\n[System Hint]\nAvailable Memes: [{menu_text}]\nUse 'MEME_TAG: content' to send."
             event.message_str += system_injection
 
     # ==============================================================
-    # 逻辑部分 2：发图执行 (这里是修复重点！！！)
+    # 逻辑部分 2：发图执行 (兼容分段插件版)
     # ==============================================================
     @filter.on_decorating_result()
     async def on_decorate(self, event: AstrMessageEvent):
@@ -79,34 +78,23 @@ class MemeMaster(Star):
         if not result:
             return
         
-        # 【超级兼容补丁】
-        # 不管 result 是什么妖魔鬼怪（分段插件可能会把它变成列表），我们都安全地读出文字
         text = ""
         try:
-            # 1. 如果有 message_str 属性（标准情况）
-            if hasattr(result, "message_str") and result.message_str:
+            if isinstance(result, list):
+                for comp in result:
+                    if isinstance(comp, Plain):
+                        text += comp.text
+            elif hasattr(result, "message_str") and result.message_str:
                 text = result.message_str
-            
-            # 2. 如果是 chain 对象（旧版本情况）
             elif hasattr(result, "chain") and result.chain:
                 for comp in result.chain:
                     if isinstance(comp, Plain):
                         text += comp.text
-            
-            # 3. 如果是列表（分段插件 Splitter 经常返回这个）
-            elif isinstance(result, list):
-                for comp in result:
-                    if isinstance(comp, Plain):
-                        text += comp.text
-            
-            # 4. 实在不行转字符串兜底
             else:
                 text = str(result)
         except:
-            # 如果读不出来，就放过它，千万别报错，一报错防抖动插件就崩
             return
 
-        # 只要找到了标签，就开始工作
         if "MEME_TAG:" in text:
             try:
                 parts = text.split("MEME_TAG:")
@@ -117,7 +105,6 @@ class MemeMaster(Star):
                 
                 if img_path:
                     print(f"🎯 AI发图: {selected_desc}")
-                    # 【兼容补丁】直接返回列表，不用 MessageChain 类
                     chain = [Plain(chat_content + "\n"), Image.fromFileSystem(img_path)]
                     event.set_result(chain)
                 else:
@@ -126,30 +113,63 @@ class MemeMaster(Star):
                 pass
 
     # ==============================================================
-    # 逻辑部分 3：AI 自动鉴赏
+    # 逻辑部分 3：AI 自动鉴赏 (使用您的新Prompt)
     # ==============================================================
-    async def ai_evaluate_image(self, img_url):
+    async def ai_evaluate_image(self, img_url, context_text=""):
         try:
             self.last_auto_save_time = time.time()
             provider = self.context.get_using_provider()
             if not provider:
                 return
 
-            prompt = """
-请判断这张图片是否适合作为"表情包"收藏。
-标准：有趣、有梗、二次元或动物表情。普通照片不要。
-如果不适合回: NO
-如果适合，请提取特征，格式为：
+            # 【已替换】使用您的新 Prompt
+            # 注意：f-string 会把 {context_text} 替换成实际的配文
+            prompt = f"""
+你正在帮我整理一个 QQ 表情包素材库。
+
+请判断这张图片是否“值得被保存”，
+作为未来聊天中可能会使用的表情包素材。
+配文是：“{context_text}”。
+
+判断时请注意：
+- 这是一个偏二次元 / meme 使用环境
+- 常见来源包括：chiikawa、这狗、线条小狗、多栋、猫meme 等
+- 不要过度严肃，也不要把普通照片当成表情包
+
+如果这张图不适合做表情包，请只回复：
+NO
+
+如果适合，请严格按下面格式回复（不要多余内容）：
+
 YES
-角色名：情绪/动作
+<名称>:<一句自然语言解释这个表情包在什么语境下使用>
+
+规则：
+1. 如果你能明确判断这是某个常见 IP、角色或 meme 系列，
+   请直接使用大家普遍认得的名字作为「名称」
+   例如：chiikawa、这狗、线条小狗、多栋、猫meme
+2. 如果无法确定具体 IP，不要强行猜测，
+   请使用一个简短的情绪或语气概括作为「名称」
+3. 冒号后必须是一句完整、自然的“使用说明”，
+   描述人在什么情况下会用这个表情包
 """
             resp = await provider.text_chat(prompt, session_id=None, image_urls=[img_url])
             content = (getattr(resp, "completion_text", None) or getattr(resp, "text", "")).strip()
 
             if content.startswith("YES"):
                 lines = content.splitlines()
-                if len(lines) >= 2:
+                # 寻找包含冒号的那一行作为 Tag
+                tag = ""
+                for line in lines:
+                    if ":" in line or "：" in line:
+                        tag = line.strip()
+                        break
+                
+                # 如果没找到冒号行，就硬取第二行
+                if not tag and len(lines) >= 2:
                     tag = lines[1].strip()
+
+                if tag:
                     print(f"🖤 [自动进货] {tag}")
                     await self._save_image_file(img_url, tag, "auto")
         except:
@@ -241,11 +261,10 @@ YES
         return web.Response(text="ok")
 
     async def handle_get_config(self, r): return web.json_response(self.local_config)
+    
     async def handle_update_config(self, r): 
         self.local_config.update(await r.json())
-        try:
-            with open(self.config_file, "w") as f: json.dump(self.local_config, f, indent=2)
-        except: pass
+        self.save_config()
         return web.Response(text="ok")
 
     # ================== 工具函数 ==================
@@ -308,6 +327,12 @@ YES
                 with open(self.config_file, "r") as f: default.update(json.load(f))
         except: pass
         return default
+    
+    def save_config(self):
+        try:
+            with open(self.config_file, "w") as f:
+                json.dump(self.local_config, f, indent=2)
+        except: pass
 
     def load_data(self):
         try:
@@ -317,5 +342,7 @@ YES
         return {}
 
     def save_data(self):
-        try: with open(self.data_file, "w") as f: json.dump(self.data, f, ensure_ascii=False)
+        try:
+            with open(self.data_file, "w") as f:
+                json.dump(self.data, f, ensure_ascii=False)
         except: pass
